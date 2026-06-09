@@ -624,7 +624,10 @@ static void wallShow(bool on) {
   if (on && !wallGif) {
     wallGif = lv_gif_create(ovScr[5]);
     lv_gif_set_src(wallGif, &wallDsc[wallCur]);
+    lv_img_set_zoom(wallGif, 512);            // 2x: 180px -> 360px = full screen
+    lv_img_set_antialias(wallGif, false);     // escala entera, nítido y barato
     lv_obj_center(wallGif);
+    lv_obj_move_background(wallGif);          // nombre y dots quedan encima
   } else if (!on && wallGif) {
     lv_obj_del(wallGif);
     wallGif = nullptr;
