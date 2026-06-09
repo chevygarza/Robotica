@@ -21,6 +21,8 @@ struct ServerHealth {
   int   ram_pct   = 0;
   char  top_cpu_name[24] = ""; float top_cpu = 0;
   char  top_ram_name[24] = ""; float top_ram = 0;
+  bool  pc_valid  = false;   // health.json trae gamer_pc
+  bool  pc_online = false;   // PC gamer responde a ping
 };
 extern ServerHealth g_srv;
 

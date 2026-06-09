@@ -3,6 +3,7 @@
 #include "app_hue.h"
 #include "app_markets.h"
 #include "app_server.h"
+#include "app_wol.h"
 #include <lvgl.h>
 #include <math.h>
 #include <string.h>
@@ -25,7 +26,7 @@ extern "C" {
 #define COL_X      lv_color_hex(0x1D9BF0)
 #define COL_OK     lv_color_hex(0x3DD68C)
 
-#define NUM_APPS 6   // 0=clima, 1=X, 2=Luces(Hue), 3=Mercados, 4=Servidor, 5=Wallpaper
+#define NUM_APPS 7   // 0=clima, 1=X, 2=Luces, 3=Mercados, 4=Servidor, 5=Wallpaper, 6=PC Gamer
 
 // Pantallas: overview (lista) y detail (info ampliada) por cada app
 static lv_obj_t *ovScr[NUM_APPS];
@@ -62,6 +63,12 @@ static lv_obj_t *wallGif, *wallName;
 static int wallCur = 0;
 static lv_img_dsc_t wallDsc[3];
 static const char *wallNames[3] = { "Dragon Ball", "Pokemon", "Zelda" };
+
+// --- PC Gamer (app 6) ---
+enum PgView { PG_IDLE, PG_CONFIRM, PG_WAKING };
+static PgView pgView = PG_IDLE;
+static uint32_t pgT = 0, pgInfoUntil = 0, pgLastReq = 0;
+static lv_obj_t *pgIcon, *pgDot, *pgStatus, *pgHint;
 
 // --- overview clima ---
 static lv_obj_t *w_clock, *w_date, *w_temp, *w_cond, *w_extra, *w_wifi, *w_rain;
@@ -660,6 +667,50 @@ static void buildWallpaperScreen() {
   buildDots(s, 5);
 }
 
+// ---------- App 6: PC Gamer (Wake-on-LAN) ----------
+static void buildGamerScreen() {
+  lv_obj_t *s = newScreen();
+  ovScr[6] = s;
+
+  lv_obj_t *t = mkLabel(s, &lv_font_montserrat_18, COL_ACCENT);
+  lv_label_set_text(t, "PC GAMER");
+  lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 42);
+
+  // boton/icono de poder grande
+  lv_obj_t *ring = lv_obj_create(s);
+  lv_obj_set_size(ring, 110, 110);
+  lv_obj_set_style_radius(ring, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_color(ring, COL_CARD, 0);
+  lv_obj_set_style_border_width(ring, 3, 0);
+  lv_obj_set_style_border_color(ring, COL_ACCENT, 0);
+  lv_obj_clear_flag(ring, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_align(ring, LV_ALIGN_CENTER, 0, -28);
+  pgIcon = mkLabel(ring, &lv_font_montserrat_48, COL_SUB);
+  lv_label_set_text(pgIcon, LV_SYMBOL_POWER);
+  lv_obj_center(pgIcon);
+
+  pgDot = lv_obj_create(s);
+  lv_obj_set_size(pgDot, 10, 10);
+  lv_obj_set_style_radius(pgDot, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_border_width(pgDot, 0, 0);
+  lv_obj_set_style_bg_color(pgDot, COL_SUB, 0);
+  lv_obj_clear_flag(pgDot, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_align(pgDot, LV_ALIGN_CENTER, -56, 56);
+
+  pgStatus = mkLabel(s, &lv_font_montserrat_16, COL_TXT);
+  lv_label_set_text(pgStatus, "Consultando...");
+  lv_obj_align(pgStatus, LV_ALIGN_CENTER, 8, 56);
+
+  pgHint = mkLabel(s, &lv_font_montserrat_14, COL_SUB);
+  lv_label_set_long_mode(pgHint, LV_LABEL_LONG_WRAP);
+  lv_obj_set_width(pgHint, 250);
+  lv_obj_set_style_text_align(pgHint, LV_TEXT_ALIGN_CENTER, 0);
+  lv_label_set_text(pgHint, "push: prender");
+  lv_obj_align(pgHint, LV_ALIGN_CENTER, 0, 96);
+
+  buildDots(s, 6);
+}
+
 void ui_build() {
   buildWeather();
   buildX();
@@ -671,6 +722,7 @@ void ui_build() {
   buildMarketsScreen();
   buildServerScreen();
   buildWallpaperScreen();
+  buildGamerScreen();
   lv_scr_load(ovScr[0]);
 }
 
@@ -703,6 +755,27 @@ void ui_select() {
   if (curApp == 3) { markets_request(); return; }
   // --- App Servidor: push = refrescar ---
   if (curApp == 4) { server_request(); return; }
+  // --- App PC Gamer: push = prender (con confirmacion) ---
+  if (curApp == 6) {
+    bool online = false;
+    if (server_lock(20)) { online = g_srv.pc_valid && g_srv.pc_online; server_unlock(); }
+    if (pgView == PG_IDLE) {
+      if (online) {
+        lv_label_set_text(pgHint, "Ya esta encendida :)");
+        pgInfoUntil = millis() + 3000;
+      } else {
+        pgView = PG_CONFIRM; pgT = millis();
+        lv_label_set_text(pgHint, "Prender PC?  push otra vez = SI");
+      }
+    } else if (pgView == PG_CONFIRM) {
+      wol_send();
+      server_request();
+      pgView = PG_WAKING; pgT = millis(); pgLastReq = millis();
+      lv_label_set_text(pgHint, "Despertando... puede tardar 1-2 min en confirmar");
+    }
+    // PG_WAKING: pushes ignorados (idempotente)
+    return;
+  }
   // --- App Wallpaper: push = siguiente GIF ---
   if (curApp == 5) {
     wallCur = (wallCur + 1) % 3;
@@ -775,6 +848,11 @@ void ui_select() {
 
 // 👇⏳ Push largo: atrás / subir un nivel
 void ui_back() {
+  if (curApp == 6 && pgView == PG_CONFIRM) {     // cancelar confirmacion
+    pgView = PG_IDLE;
+    lv_label_set_text(pgHint, "push: prender");
+    return;
+  }
   if (curApp == 2 && hueView != HV_NONE) {
     if (hueView == HV_CONTROL) {
       hueView = HV_LIGHTS; hueSel = hueLightSel; hueEnterLights();
@@ -951,6 +1029,42 @@ void ui_tick() {
       lv_label_set_text(srvStatus, g_srv.err[0] ? g_srv.err : "Sin datos");
       lv_obj_set_style_bg_color(srvDot, COL_SUB, 0);
     }
+
+    // --- PC Gamer ---
+    bool pcKnown  = g_srv.valid && g_srv.pc_valid;
+    bool pcOnline = pcKnown && g_srv.pc_online;
     server_unlock();
+
+    if (pcKnown) {
+      lv_obj_set_style_bg_color(pgDot, pcOnline ? COL_OK : COL_SUB, 0);
+      lv_label_set_text(pgStatus, pcOnline ? "Encendida" : "Apagada");
+      lv_obj_set_style_text_color(pgIcon, pcOnline ? COL_OK : COL_SUB, 0);
+    } else {
+      lv_label_set_text(pgStatus, "Consultando...");
+    }
+
+    if (pgView == PG_CONFIRM && millis() - pgT > 10000) {
+      pgView = PG_IDLE;
+      lv_label_set_text(pgHint, "push: prender");
+    }
+    if (pgView == PG_WAKING) {
+      if (pcOnline) {
+        pgView = PG_IDLE;
+        lv_label_set_text(pgHint, "Encendida! A jugar :)");
+        pgInfoUntil = millis() + 6000;
+      } else if (millis() - pgT > 180000) {
+        pgView = PG_IDLE;
+        lv_label_set_text(pgHint, "No confirmo en 3 min - revisa la PC");
+        pgInfoUntil = millis() + 8000;
+      } else if (millis() - pgLastReq > 15000) {
+        pgLastReq = millis();
+        server_request();                       // re-checa el estado mas seguido
+      }
+    }
+    if (pgView == PG_IDLE && pgInfoUntil && millis() > pgInfoUntil) {
+      pgInfoUntil = 0;
+      lv_label_set_text(pgHint, "push: prender");
+    }
+    return;
   }
 }

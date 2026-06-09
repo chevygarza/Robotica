@@ -56,6 +56,9 @@ static void fetchServer() {
         if (tc.size() > 0) { strncpy(g_srv.top_cpu_name, tc[0]["name"] | "", sizeof(g_srv.top_cpu_name) - 1); g_srv.top_cpu = tc[0]["cpu"] | 0.0f; }
         JsonArray tr = doc["top_ram"].as<JsonArray>();
         if (tr.size() > 0) { strncpy(g_srv.top_ram_name, tr[0]["name"] | "", sizeof(g_srv.top_ram_name) - 1); g_srv.top_ram = tr[0]["ram"] | 0.0f; }
+        JsonObject gp = doc["gamer_pc"];
+        g_srv.pc_valid  = !gp.isNull();
+        g_srv.pc_online = gp["online"] | false;
         g_srv.valid = true; g_srv.reachable = true; g_srv.err[0] = 0;
         server_unlock();
       }
