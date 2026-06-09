@@ -2,6 +2,7 @@
 #include "secrets.h"
 #include <WiFi.h>
 #include <WiFiUdp.h>
+#include <HTTPClient.h>
 
 static bool parseMac(const char *s, uint8_t out[6]) {
   unsigned int v[6];
@@ -33,4 +34,28 @@ void wol_send() {
     delay(60);
   }
   Serial.println("[wol] magic packets enviados (broadcast :9 y :7, x3)");
+}
+
+// ---- Apagado (POST al pc_agent.ps1 en la PC, en task propio: no bloquea UI) ----
+volatile int g_pcShutdownResult = 0;
+
+static void shutdownTask(void *pv) {
+  WiFiClient client; HTTPClient http;
+  http.setConnectTimeout(3000);
+  http.setTimeout(4000);
+  String url = String("http://") + GAMER_IP + ":" + GAMER_AGENT_PORT +
+               "/shutdown?t=" + GAMER_TOKEN;
+  int code = -1;
+  if (http.begin(client, url)) {
+    code = http.sendRequest("POST", "");
+    http.end();
+  }
+  Serial.printf("[wol] shutdown -> %d\n", code);
+  g_pcShutdownResult = (code == 200) ? 2 : -1;
+  vTaskDelete(NULL);
+}
+
+void pc_shutdown_async() {
+  g_pcShutdownResult = 1;
+  xTaskCreatePinnedToCore(shutdownTask, "pcoff", 6144, nullptr, 1, nullptr, 0);
 }

@@ -65,7 +65,7 @@ static lv_img_dsc_t wallDsc[3];
 static const char *wallNames[3] = { "Dragon Ball", "Pokemon", "Zelda" };
 
 // --- PC Gamer (app 6) ---
-enum PgView { PG_IDLE, PG_CONFIRM, PG_WAKING };
+enum PgView { PG_IDLE, PG_CONFIRM, PG_WAKING, PG_CONFIRM_OFF, PG_OFFING };
 static PgView pgView = PG_IDLE;
 static uint32_t pgT = 0, pgInfoUntil = 0, pgLastReq = 0;
 static lv_obj_t *pgIcon, *pgDot, *pgStatus, *pgHint;
@@ -761,8 +761,8 @@ void ui_select() {
     if (server_lock(20)) { online = g_srv.pc_valid && g_srv.pc_online; server_unlock(); }
     if (pgView == PG_IDLE) {
       if (online) {
-        lv_label_set_text(pgHint, "Ya esta encendida :)");
-        pgInfoUntil = millis() + 3000;
+        pgView = PG_CONFIRM_OFF; pgT = millis();
+        lv_label_set_text(pgHint, "Apagar PC?  push otra vez = SI");
       } else {
         pgView = PG_CONFIRM; pgT = millis();
         lv_label_set_text(pgHint, "Prender PC?  push otra vez = SI");
@@ -772,8 +772,13 @@ void ui_select() {
       server_request();
       pgView = PG_WAKING; pgT = millis(); pgLastReq = millis();
       lv_label_set_text(pgHint, "Despertando... puede tardar 1-2 min en confirmar");
+    } else if (pgView == PG_CONFIRM_OFF) {
+      pc_shutdown_async();
+      server_request();
+      pgView = PG_OFFING; pgT = millis(); pgLastReq = millis();
+      lv_label_set_text(pgHint, "Apagando...");
     }
-    // PG_WAKING: pushes ignorados (idempotente)
+    // PG_WAKING / PG_OFFING: pushes ignorados (idempotente)
     return;
   }
   // --- App Wallpaper: push = siguiente GIF ---
@@ -848,9 +853,9 @@ void ui_select() {
 
 // 👇⏳ Push largo: atrás / subir un nivel
 void ui_back() {
-  if (curApp == 6 && pgView == PG_CONFIRM) {     // cancelar confirmacion
+  if (curApp == 6 && (pgView == PG_CONFIRM || pgView == PG_CONFIRM_OFF)) {  // cancelar
     pgView = PG_IDLE;
-    lv_label_set_text(pgHint, "push: prender");
+    lv_label_set_text(pgHint, "push: prender / apagar");
     return;
   }
   if (curApp == 2 && hueView != HV_NONE) {
@@ -1043,9 +1048,9 @@ void ui_tick() {
       lv_label_set_text(pgStatus, "Consultando...");
     }
 
-    if (pgView == PG_CONFIRM && millis() - pgT > 10000) {
+    if ((pgView == PG_CONFIRM || pgView == PG_CONFIRM_OFF) && millis() - pgT > 10000) {
       pgView = PG_IDLE;
-      lv_label_set_text(pgHint, "push: prender");
+      lv_label_set_text(pgHint, "push: prender / apagar");
     }
     if (pgView == PG_WAKING) {
       if (pcOnline) {
@@ -1061,9 +1066,27 @@ void ui_tick() {
         server_request();                       // re-checa el estado mas seguido
       }
     }
+    if (pgView == PG_OFFING) {
+      if (g_pcShutdownResult == -1) {
+        pgView = PG_IDLE;
+        lv_label_set_text(pgHint, "No pude apagarla (agente instalado?)");
+        pgInfoUntil = millis() + 8000;
+      } else if (!pcOnline) {
+        pgView = PG_IDLE;
+        lv_label_set_text(pgHint, "Apagada. Buenas noches, gamer");
+        pgInfoUntil = millis() + 6000;
+      } else if (millis() - pgT > 120000) {
+        pgView = PG_IDLE;
+        lv_label_set_text(pgHint, "Sigue encendida - revisa la PC");
+        pgInfoUntil = millis() + 8000;
+      } else if (millis() - pgLastReq > 15000) {
+        pgLastReq = millis();
+        server_request();
+      }
+    }
     if (pgView == PG_IDLE && pgInfoUntil && millis() > pgInfoUntil) {
       pgInfoUntil = 0;
-      lv_label_set_text(pgHint, "push: prender");
+      lv_label_set_text(pgHint, "push: prender / apagar");
     }
     return;
   }
