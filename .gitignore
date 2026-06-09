@@ -1,0 +1,9 @@
+# Repo de Elecrow clonado (es su propio git, 451MB)
+repo/
+
+# Binarios y respaldos pesados (el respaldo de fábrica vive fuera de git)
+*.bin
+build/
+
+# macOS
+.DS_Store
