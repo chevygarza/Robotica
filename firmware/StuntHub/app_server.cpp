@@ -70,6 +70,7 @@ static void fetchServer() {
 
 static void srvTask(void *pv) {
   while (WiFi.status() != WL_CONNECTED) vTaskDelay(pdMS_TO_TICKS(500));
+  vTaskDelay(pdMS_TO_TICKS(7000));   // escalonar arranque (ver nota en app_markets)
   const uint32_t REFRESH = 45UL * 1000UL;   // cada 45s (el JSON se regenera cada 60s)
   uint32_t last = 0; bool first = true;
   for (;;) {

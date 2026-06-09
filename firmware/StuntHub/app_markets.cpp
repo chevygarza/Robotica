@@ -22,15 +22,19 @@ void markets_unlock() { if (s_mtx) xSemaphoreGive(s_mtx); }
 bool markets_consumeDirty() { bool d = s_dirty; s_dirty = false; return d; }
 void markets_request() { s_req = true; }
 
-static void fetchMarkets() {
+static bool fetchMarkets() {
+  bool ok = false;
   WiFiClientSecure client;
   client.setCACert(ISRG_ROOT_X1);
+  client.setHandshakeTimeout(15);        // seg: el 1er handshake puede ser lento
   HTTPClient https;
+  https.setConnectTimeout(10000);
+  https.setTimeout(10000);
   String ids;
   for (int i = 0; i < COIN_N; i++) { if (i) ids += "%2C"; ids += COIN_IDS[i]; }
   String url = "https://api.coingecko.com/api/v3/simple/price?ids=" + ids +
                "&vs_currencies=usd&include_24hr_change=true";
-  if (!https.begin(client, url)) return;
+  if (!https.begin(client, url)) return false;
   int code = https.GET();
   Serial.printf("[mkt] HTTP=%d\n", code);
   if (code == 200) {
@@ -48,19 +52,26 @@ static void fetchMarkets() {
         }
         s_dirty = true;
         markets_unlock();
+        ok = true;
       }
     }
   }
   https.end();
+  return ok;
 }
 
 static void mktTask(void *pv) {
   while (WiFi.status() != WL_CONNECTED) vTaskDelay(pdMS_TO_TICKS(500));
-  const uint32_t REFRESH = 5UL * 60UL * 1000UL;   // cada 5 min (CoinGecko gratis)
-  uint32_t last = 0; bool first = true;
+  // Escalonar: clima/X hacen su TLS primero; 3 handshakes simultáneos
+  // en core 0 disparan el task watchdog (visto en boot 2026-06-09).
+  vTaskDelay(pdMS_TO_TICKS(14000));
+  const uint32_t REFRESH  = 5UL * 60UL * 1000UL;  // cada 5 min (CoinGecko gratis)
+  const uint32_t RETRY_MS = 30UL * 1000UL;        // reintento rápido tras fallo
+  uint32_t last = 0; bool first = true, lastOk = false;
   for (;;) {
-    if (WiFi.status() == WL_CONNECTED && (s_req || first || millis() - last > REFRESH)) {
-      fetchMarkets();
+    uint32_t wait = lastOk ? REFRESH : RETRY_MS;
+    if (WiFi.status() == WL_CONNECTED && (s_req || first || millis() - last > wait)) {
+      lastOk = fetchMarkets();
       last = millis(); first = false; s_req = false;
     }
     vTaskDelay(pdMS_TO_TICKS(1000));
