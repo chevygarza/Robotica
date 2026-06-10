@@ -31,6 +31,7 @@ static bool pollStatus() {
   http.setTimeout(3000);
   if (!http.begin(client, baseUrl() + "/status")) return false;
   int code = http.GET();
+  Serial.printf("[tme] GET /status -> %d\n", code);
   bool ok = false;
   if (code == 200) {
     String body = http.getString();
@@ -68,9 +69,26 @@ static void doReset() {
 static void tmeTask(void *pv) {
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.printf("[tme] conectando a '%s'...\n", WIFI_SSID);
   uint32_t lastOk = 0, lastPoll = 0;
+  bool wasConn = false;
   for (;;) {
-    if (WiFi.status() != WL_CONNECTED) {
+    bool conn = (WiFi.status() == WL_CONNECTED);
+    if (tme_lock(10)) { g_tme.wifiUp = conn; tme_unlock(); }
+    if (conn && !wasConn) {
+      Serial.print("[tme] ✅ WiFi OK  IP=");
+      Serial.print(WiFi.localIP());
+      Serial.print("  GW=");
+      Serial.println(WiFi.gatewayIP());
+    }
+    if (!conn && wasConn) Serial.println("[tme] ⚠️ WiFi perdido");
+    wasConn = conn;
+    if (!conn) {
+      static uint32_t lastLog = 0;
+      if (millis() - lastLog > 3000) {
+        lastLog = millis();
+        Serial.printf("[tme] sin WiFi (status=%d)\n", WiFi.status());
+      }
       if (tme_lock(20)) { g_tme.state = TME_OFFLINE; tme_unlock(); }
       WiFi.reconnect();
       vTaskDelay(pdMS_TO_TICKS(2000));

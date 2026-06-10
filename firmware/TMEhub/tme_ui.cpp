@@ -36,8 +36,10 @@ static bool sawRun = false;          // presenciamos el proceso
 
 // ---------- Widgets ----------
 static lv_obj_t *scr[5];
-static lv_obj_t *idleStatus, *idleDot;
+static lv_obj_t *idleStatus, *idleDot, *idleHint;
 static lv_obj_t *runStep, *runBar, *runEta, *runPhrase;
+static uint32_t runT = 0;          // cuando entramos a RUN
+static bool sawAgentRun = false;   // ¿el agente confirmo que corre?
 
 static lv_obj_t* mkLabel(lv_obj_t *p, const lv_font_t *f, lv_color_t c) {
   lv_obj_t *l = lv_label_create(p);
@@ -99,9 +101,9 @@ static void buildIdle() {
   lv_label_set_text(bl, LV_SYMBOL_PLAY "  Iniciar reseteo");
   lv_obj_center(bl);
 
-  lv_obj_t *h = mkLabel(s, &lv_font_montserrat_12, COL_SUB);
-  lv_label_set_text(h, "presiona la perilla");
-  lv_obj_align(h, LV_ALIGN_BOTTOM_MID, 0, -34);
+  idleHint = mkLabel(s, &lv_font_montserrat_12, COL_SUB);
+  lv_label_set_text(idleHint, "presiona la perilla");
+  lv_obj_align(idleHint, LV_ALIGN_BOTTOM_MID, 0, -34);
 }
 
 // ---------- V_CONFIRM ----------
@@ -199,7 +201,7 @@ static void buildError() {
   lv_label_set_long_mode(m, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(m, 260);
   lv_obj_set_style_text_align(m, LV_TEXT_ALIGN_CENTER, 0);
-  lv_label_set_text(m, "Intenta de nuevo o\navisa a sistemas.");
+  lv_label_set_text(m, "Intenta de nuevo o reporta\nel error a administracion.");
   lv_obj_align(m, LV_ALIGN_CENTER, 0, 38);
 
   lv_obj_t *h = mkLabel(s, &lv_font_montserrat_12, COL_SUB);
@@ -227,12 +229,17 @@ bool ui_can_sleep() { return view == V_IDLE; }
 // 👇 Push corto
 void ui_push() {
   switch (view) {
-    case V_IDLE:
+    case V_IDLE: {
+      bool online = false;
+      if (tme_lock(20)) { online = (g_tme.state != TME_OFFLINE); tme_unlock(); }
+      if (!online) break;          // sin conexion: no se puede armar (la pantalla ya avisa)
       show(V_CONFIRM); confirmT = millis();
       break;
+    }
     case V_CONFIRM:
       tme_request_reset();
       sawRun = true; dismissed = false;
+      runT = millis(); sawAgentRun = false;
       lv_label_set_text(runStep, "Iniciando...");
       lv_bar_set_value(runBar, 3, LV_ANIM_OFF);
       lv_label_set_text(runEta, "");
@@ -250,6 +257,7 @@ void ui_push() {
 
 void ui_long() {
   if (view == V_CONFIRM) show(V_IDLE);   // cancelar confirmacion
+  if (view == V_RUN) { sawRun = false; show(V_IDLE); }   // escape manual
   if (view == V_DONE || view == V_ERROR) { dismissed = true; sawRun = false; show(V_IDLE); }
 }
 
@@ -271,7 +279,19 @@ void ui_tick() {
   if (isRunning) dismissed = false;
 
   // proceso corriendo (incluso iniciado desde el escritorio) -> mostrar barra
-  if (isRunning && (view == V_IDLE || view == V_CONFIRM)) { sawRun = true; show(V_RUN); }
+  if (isRunning && (view == V_IDLE || view == V_CONFIRM)) {
+    sawRun = true; runT = millis(); sawAgentRun = true;
+    show(V_RUN);
+  }
+
+  // RUN: ¿el agente confirmo que el proceso corre?
+  if (view == V_RUN && isRunning) sawAgentRun = true;
+
+  // RUN sin confirmacion del agente en 20s -> fallo de arranque
+  if (view == V_RUN && !sawAgentRun && millis() - runT > 20000) {
+    sawRun = false;
+    show(V_ERROR);    // "Algo fallo... reporta el error a administracion"
+  }
 
   // fin del proceso
   if (st.state == TME_DONE && view == V_RUN)  show(V_DONE);
@@ -295,10 +315,26 @@ void ui_tick() {
     }
   }
 
-  // status en reposo
+  // status en reposo: 3 estados claros (peticion de Jose)
   if (view == V_IDLE) {
-    bool online = (st.state != TME_OFFLINE);
-    lv_obj_set_style_bg_color(idleDot, online ? COL_OK : COL_SUB, 0);
-    lv_label_set_text(idleStatus, online ? "Maquina en linea" : "Sin conexion con maquina");
+    if (!st.wifiUp) {
+      lv_obj_set_style_bg_color(idleDot, COL_WARM, 0);
+      lv_label_set_text(idleStatus, "Conectando WiFi...");
+      lv_obj_set_style_text_color(idleStatus, COL_WARM, 0);
+      lv_label_set_text(idleHint, "espera unos segundos");
+      lv_obj_set_style_text_color(idleHint, COL_SUB, 0);
+    } else if (st.state == TME_OFFLINE) {
+      lv_obj_set_style_bg_color(idleDot, COL_BAD, 0);
+      lv_label_set_text(idleStatus, "Sin conexion con maquina");
+      lv_obj_set_style_text_color(idleStatus, COL_BAD, 0);
+      lv_label_set_text(idleHint, "Reporta el error a administracion");
+      lv_obj_set_style_text_color(idleHint, COL_BAD, 0);
+    } else {
+      lv_obj_set_style_bg_color(idleDot, COL_OK, 0);
+      lv_label_set_text(idleStatus, "Maquina en linea");
+      lv_obj_set_style_text_color(idleStatus, COL_SUB, 0);
+      lv_label_set_text(idleHint, "presiona la perilla");
+      lv_obj_set_style_text_color(idleHint, COL_SUB, 0);
+    }
   }
 }

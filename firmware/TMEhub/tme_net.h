@@ -8,6 +8,7 @@ struct TmeStatus {
   int   pct   = 0;
   int   eta_s = -1;
   bool  running = false;
+  bool  wifiUp  = false;     // ¿conectada al WiFi? (distinto de ver al agente)
   char  label[44] = "";
 };
 extern TmeStatus g_tme;
