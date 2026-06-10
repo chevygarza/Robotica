@@ -47,7 +47,9 @@ static void shutdownTask(void *pv) {
                "/shutdown?t=" + GAMER_TOKEN;
   int code = -1;
   if (http.begin(client, url)) {
-    code = http.sendRequest("POST", "");
+    http.addHeader("Content-Type", "application/json");
+    // OJO: HTTP.sys de Windows rechaza POST sin cuerpo (411 Length Required)
+    code = http.sendRequest("POST", "{}");
     http.end();
   }
   Serial.printf("[wol] shutdown -> %d\n", code);
