@@ -67,6 +67,9 @@ function Start-Reset {
   $running = [bool](Get-Process -Name "PC26_V1" -ErrorAction SilentlyContinue)
   if ($running) { return '{"started":false,"reason":"already_running"}' }
   if (-not (Test-Path $ExePath)) { return '{"started":false,"reason":"exe_not_found"}' }
+  # Limpia la senal del reseteo ANTERIOR: si no, la perilla lee el 'done'
+  # viejo en lo que el macro arranca y salta a "Listo" al instante.
+  Remove-Item $SignalFile -ErrorAction SilentlyContinue
   Start-Process -FilePath $ExePath
   return '{"started":true}'
 }

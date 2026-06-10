@@ -12,6 +12,7 @@
 #define COL_WARM   lv_color_hex(0xFFB454)
 #define COL_OK     lv_color_hex(0x3DD68C)
 #define COL_BAD    lv_color_hex(0xFF5B6E)
+#define COL_TME    lv_color_hex(0xE8631A)   // naranja TME (fondo principal)
 
 // ---------- Frases para el operador (rotan cada 6s) ----------
 static const char *PHRASES[] = {
@@ -36,10 +37,11 @@ static bool sawRun = false;          // presenciamos el proceso
 
 // ---------- Widgets ----------
 static lv_obj_t *scr[5];
-static lv_obj_t *idleStatus, *idleDot, *idleHint;
+static lv_obj_t *idleDot;
 static lv_obj_t *runStep, *runBar, *runEta, *runPhrase;
 static uint32_t runT = 0;          // cuando entramos a RUN
 static bool sawAgentRun = false;   // ¿el agente confirmo que corre?
+static int  runCreep = 5;          // barra "viva" durante el arranque
 
 static lv_obj_t* mkLabel(lv_obj_t *p, const lv_font_t *f, lv_color_t c) {
   lv_obj_t *l = lv_label_create(p);
@@ -64,46 +66,32 @@ static lv_obj_t* newScreen(lv_color_t topColor) {
   return s;
 }
 
-// ---------- V_IDLE ----------
+// ---------- V_IDLE (fondo naranja TME, minimal) ----------
 static void buildIdle() {
-  lv_obj_t *s = newScreen(COL_ACCENT);
+  lv_obj_t *s = lv_obj_create(NULL);
+  lv_obj_set_style_bg_color(s, COL_TME, 0);
+  lv_obj_set_style_bg_opa(s, LV_OPA_COVER, 0);
+  lv_obj_clear_flag(s, LV_OBJ_FLAG_SCROLLABLE);
   scr[V_IDLE] = s;
 
+  // TME lo mas grande posible
   lv_obj_t *t = mkLabel(s, &lv_font_montserrat_48, COL_TXT);
   lv_label_set_text(t, "TME");
-  lv_obj_align(t, LV_ALIGN_CENTER, 0, -70);
+  lv_obj_align(t, LV_ALIGN_CENTER, 0, -52);
 
-  lv_obj_t *st = mkLabel(s, &lv_font_montserrat_20, COL_SUB);
-  lv_label_set_text(st, "Reseteo PC26");
-  lv_obj_align(st, LV_ALIGN_CENTER, 0, -26);
+  lv_obj_t *st = mkLabel(s, &lv_font_montserrat_28, COL_TXT);
+  lv_label_set_text(st, "Iniciar reseteo");
+  lv_obj_align(st, LV_ALIGN_CENTER, 0, 6);
 
+  // LED de estado, hasta abajo (verde = en linea / rojo = no)
   idleDot = lv_obj_create(s);
-  lv_obj_set_size(idleDot, 10, 10);
+  lv_obj_set_size(idleDot, 26, 26);
   lv_obj_set_style_radius(idleDot, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_border_width(idleDot, 0, 0);
-  lv_obj_set_style_bg_color(idleDot, COL_SUB, 0);
+  lv_obj_set_style_border_width(idleDot, 2, 0);
+  lv_obj_set_style_border_color(idleDot, COL_TXT, 0);
+  lv_obj_set_style_bg_color(idleDot, COL_BAD, 0);
   lv_obj_clear_flag(idleDot, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_align(idleDot, LV_ALIGN_CENTER, -72, 12);
-
-  idleStatus = mkLabel(s, &lv_font_montserrat_14, COL_SUB);
-  lv_label_set_text(idleStatus, "Buscando maquina...");
-  lv_obj_align(idleStatus, LV_ALIGN_CENTER, 8, 12);
-
-  lv_obj_t *btn = lv_obj_create(s);
-  lv_obj_set_size(btn, 220, 54);
-  lv_obj_set_style_radius(btn, 27, 0);
-  lv_obj_set_style_bg_color(btn, COL_CARD, 0);
-  lv_obj_set_style_border_width(btn, 2, 0);
-  lv_obj_set_style_border_color(btn, COL_ACCENT, 0);
-  lv_obj_clear_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_align(btn, LV_ALIGN_CENTER, 0, 70);
-  lv_obj_t *bl = mkLabel(btn, &lv_font_montserrat_18, COL_TXT);
-  lv_label_set_text(bl, LV_SYMBOL_PLAY "  Iniciar reseteo");
-  lv_obj_center(bl);
-
-  idleHint = mkLabel(s, &lv_font_montserrat_12, COL_SUB);
-  lv_label_set_text(idleHint, "presiona la perilla");
-  lv_obj_align(idleHint, LV_ALIGN_BOTTOM_MID, 0, -34);
+  lv_obj_align(idleDot, LV_ALIGN_BOTTOM_MID, 0, -40);
 }
 
 // ---------- V_CONFIRM ----------
@@ -239,9 +227,9 @@ void ui_push() {
     case V_CONFIRM:
       tme_request_reset();
       sawRun = true; dismissed = false;
-      runT = millis(); sawAgentRun = false;
+      runT = millis(); sawAgentRun = false; runCreep = 5;
       lv_label_set_text(runStep, "Iniciando...");
-      lv_bar_set_value(runBar, 3, LV_ANIM_OFF);
+      lv_bar_set_value(runBar, 5, LV_ANIM_OFF);
       lv_label_set_text(runEta, "");
       show(V_RUN);
       break;
@@ -280,7 +268,7 @@ void ui_tick() {
 
   // proceso corriendo (incluso iniciado desde el escritorio) -> mostrar barra
   if (isRunning && (view == V_IDLE || view == V_CONFIRM)) {
-    sawRun = true; runT = millis(); sawAgentRun = true;
+    sawRun = true; runT = millis(); sawAgentRun = true; runCreep = 5;
     show(V_RUN);
   }
 
@@ -293,14 +281,24 @@ void ui_tick() {
     show(V_ERROR);    // "Algo fallo... reporta el error a administracion"
   }
 
-  // fin del proceso
-  if (st.state == TME_DONE && view == V_RUN)  show(V_DONE);
+  // fin del proceso. DONE solo si presenciamos que CORRIO (evita el 'done'
+  // viejo del reseteo anterior que hacia saltar a "Listo" al instante).
+  if (st.state == TME_DONE && view == V_RUN && sawAgentRun)  show(V_DONE);
   if (st.state == TME_ERROR && !dismissed && (view == V_RUN || view == V_IDLE) && sawRun) show(V_ERROR);
 
   // refresco de la vista RUN
   if (view == V_RUN) {
     if (st.label[0]) lv_label_set_text(runStep, st.label);
-    if (st.pct >= 0) lv_bar_set_value(runBar, st.pct, LV_ANIM_ON);
+    // barra: progreso real cuando el agente ya da checks; mientras arranca,
+    // un "creep" para que el operador vea que SI esta trabajando.
+    int shown;
+    if (st.state == TME_CHECK1 || st.state == TME_CHECK2 || st.state == TME_DONE) {
+      shown = st.pct;
+    } else {
+      if (runCreep < 38) runCreep += 1;
+      shown = runCreep;
+    }
+    lv_bar_set_value(runBar, shown, LV_ANIM_ON);
     if (st.eta_s >= 0) {
       char e[20]; snprintf(e, sizeof(e), "faltan %02d:%02d", st.eta_s / 60, st.eta_s % 60);
       lv_label_set_text(runEta, e);
@@ -315,26 +313,9 @@ void ui_tick() {
     }
   }
 
-  // status en reposo: 3 estados claros (peticion de Jose)
+  // status en reposo: solo el LED (verde = en linea / rojo = no)
   if (view == V_IDLE) {
-    if (!st.wifiUp) {
-      lv_obj_set_style_bg_color(idleDot, COL_WARM, 0);
-      lv_label_set_text(idleStatus, "Conectando WiFi...");
-      lv_obj_set_style_text_color(idleStatus, COL_WARM, 0);
-      lv_label_set_text(idleHint, "espera unos segundos");
-      lv_obj_set_style_text_color(idleHint, COL_SUB, 0);
-    } else if (st.state == TME_OFFLINE) {
-      lv_obj_set_style_bg_color(idleDot, COL_BAD, 0);
-      lv_label_set_text(idleStatus, "Sin conexion con maquina");
-      lv_obj_set_style_text_color(idleStatus, COL_BAD, 0);
-      lv_label_set_text(idleHint, "Reporta el error a administracion");
-      lv_obj_set_style_text_color(idleHint, COL_BAD, 0);
-    } else {
-      lv_obj_set_style_bg_color(idleDot, COL_OK, 0);
-      lv_label_set_text(idleStatus, "Maquina en linea");
-      lv_obj_set_style_text_color(idleStatus, COL_SUB, 0);
-      lv_label_set_text(idleHint, "presiona la perilla");
-      lv_obj_set_style_text_color(idleHint, COL_SUB, 0);
-    }
+    bool online = (st.wifiUp && st.state != TME_OFFLINE);
+    lv_obj_set_style_bg_color(idleDot, online ? COL_OK : COL_BAD, 0);
   }
 }
