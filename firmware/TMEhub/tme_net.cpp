@@ -106,6 +106,18 @@ static void tmeTask(void *pv) {
         if (tme_lock(20)) { g_tme.state = TME_OFFLINE; tme_unlock(); }
       }
     }
+
+    // REDUNDANCIA: WiFi "conectado" pero >60s sin ver al agente = zombie.
+    // Forzar disconnect+reconnect para que el stack vuelva a empezar.
+    static uint32_t lastZombieKick = 0;
+    if (millis() - lastOk > 60000 && millis() - lastZombieKick > 60000) {
+      lastZombieKick = millis();
+      Serial.println("[tme] WiFi zombie? forzando reconexion completa");
+      WiFi.disconnect(true);
+      vTaskDelay(pdMS_TO_TICKS(500));
+      WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+      lastOk = millis();   // dale 60s mas antes del proximo kick
+    }
     vTaskDelay(pdMS_TO_TICKS(200));
   }
 }
