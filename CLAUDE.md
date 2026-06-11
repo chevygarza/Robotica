@@ -162,6 +162,32 @@ curl http://192.168.86.56:8767/status?t=stunthub                  # PC gamer
 curl http://192.168.87.23:8766/status                             # TME maquina
 ```
 
+## ⚠️ REGLAS DURAS (contrato con cualquier sesion futura)
+
+Estas reglas NO se negocian. Si una sesion nueva quiere hacer cambios, debe respetar este contrato — si no, Jose corrige y se vuelve al ultimo commit estable.
+
+1. **NUNCA flashees sin confirmacion explicita de Jose en ESE mensaje.** "Hacer un cambio" != "subirlo a la placa". Compilar y commitear, si. Flashear, solo cuando Jose diga "flashea" o "subelo". TMEhub corre en produccion de la empresa: un flasheo malo deja sin reseteos.
+2. **NUNCA refactorices "porque queda mas limpio".** El codigo es feo a proposito (un firmware optimizado para no romperse, no para gustar a un linter). Pull requests de cleanup = no. Solo cambia lo que Jose pidio.
+3. **NUNCA cambies versiones de librerias.** `tools/build_env/README.md` pin LovyanGFX 1.2.7 y core esp32 2.0.17. Si una version nueva "soluciona algo" — no. La pantalla queda en blanco con LovyanGFX 1.2.21 (saga 11-jun). Pin a 1.2.7 SIEMPRE.
+4. **NUNCA modifiques los agentes Windows sin avisar.** `tme_agent.ps1`, `pc_agent.ps1` y el cron del Mac Mini son contratos compartidos con multiples partes. Cambios = aviso explicito en respuesta + commit aparte.
+5. **NUNCA cambies IPs ni redes ni MACs en secrets.h sin verificar primero con curl/ping.** Saga IP del 10-jun (.70 vs .56, .86 vs .87) nos costo 5 horas. Antes de tocar, verifica con la red de Jose en vivo.
+6. **NUNCA borres signal files, flash, particiones o archivos de respaldo "para limpiar".** `backup/factory_full_16MB.bin` es la unica forma de recuperar la placa si algo se pierde. `tme_agent.ps1` borra TME_BAR_SIGNAL.txt SOLO al iniciar un reset (esa logica es delicada).
+7. **NUNCA leas serial del ESP32-S3 con un script que toggle RTS/DTR.** Lo deja en modo DOWNLOAD (boot:0x30, pantalla negra). Para escuchar serial: abrir con `dtr=False rts=False` ANTES de `open()`. Para revivir si quedo atorado: power-cycle fisico.
+8. **NUNCA cambies la paleta de colores ni el fondo naranja sin avisar.** La mura del panel ST77961 (saga 11-jun) se ve en fondos oscuros. Naranja sólido brillante la esconde. Si propones azul o gris para algo, advierte primero.
+9. **Si encuentras algo raro, DOCUMENTA en CLAUDE.md.** No solo commitees. Agrega entrada a "Gotchas" o "Decisiones" para que la SIGUIENTE sesion no caiga.
+10. **Si Jose dice "no muevas cosas raras", PARA.** No interpretes, no expandas, no "aprovecha para limpiar". Mantente en el lane.
+
+## Como introducir un cambio sin romper
+
+Patron seguro:
+1. Lee CLAUDE.md COMPLETO antes de tocar nada.
+2. `git log --oneline -20` para ver historia reciente.
+3. `git status` y `git diff` antes de cambiar.
+4. Edicion minima. Compila sin flashear.
+5. Explica a Jose QUE cambia en 2-3 lineas. Espera confirmacion.
+6. Commitea con mensaje claro. Solo flashea si Jose lo pide.
+7. Si rompe algo, `git reset --hard HEAD~1` (o el commit previo) — los binarios buenos viven en `backup/stunthub_v2_bin/` y el codigo en git.
+
 ## Estilo de respuesta esperado (peticion explicita de Jose)
 - Espanol, directo, sin verborrea.
 - Frases tipo "Listo" no son resumenes — son cierres de accion.
