@@ -11,3 +11,6 @@ build/
 # Artefactos de build pesados
 *.elf
 *.map
+
+# Secretos (cada proyecto tiene su secrets.h local)
+secrets.h

@@ -1,5 +1,0 @@
-# NUNCA versionar secretos ni binarios
-secrets.h
-*.bin
-build/
-*.log
