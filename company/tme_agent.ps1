@@ -93,6 +93,17 @@ while ($listener.IsListening) {
     elseif ($req.HttpMethod -eq 'POST' -and $req.Url.AbsolutePath -eq '/reset') {
       $body = Start-Reset; $res.StatusCode = 200
     }
+    elseif ($req.HttpMethod -eq 'POST' -and $req.Url.AbsolutePath -eq '/abort') {
+      # RESCATE (5 pushes en la perilla): mata el macro atorado, la barra,
+      # los dialogos y la alarma, y borra la senal -> estado limpio de cero.
+      Stop-Process -Name "PC26_V1" -Force -ErrorAction SilentlyContinue
+      Stop-Process -Name vlc -Force -ErrorAction SilentlyContinue
+      Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -and $_.CommandLine -match 'barra_progreso|listo_reseteo|error_reseteo|reseteo_completo' } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+      Remove-Item $SignalFile -ErrorAction SilentlyContinue
+      $body = '{"ok":true,"aborted":true}'; $res.StatusCode = 200
+    }
     elseif ($req.HttpMethod -eq 'POST' -and $req.Url.AbsolutePath -eq '/silence') {
       # Mata la alarma (VLC en loop) y los dialogos de listo/error.
       # Importante: un dialogo huerfano encima puede robarle clicks al

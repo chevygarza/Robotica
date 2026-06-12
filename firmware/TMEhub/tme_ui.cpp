@@ -43,6 +43,10 @@ static lv_obj_t *runStep, *runBar, *runEta, *runPhrase;
 static uint32_t runT = 0;          // cuando entramos a RUN
 static bool sawAgentRun = false;   // ¿el agente confirmo que corre?
 static int  runCreep = 5;          // barra "viva" durante el arranque
+// Rescate 5-push: cancela un proceso atorado y regresa a inicio
+static int      runPushes = 0;
+static uint32_t lastRunPush = 0;
+static uint32_t abortCooldownUntil = 0;   // tras abortar, no re-entrar a RUN
 
 static lv_obj_t* mkLabel(lv_obj_t *p, const lv_font_t *f, lv_color_t c) {
   lv_obj_t *l = lv_label_create(p);
@@ -218,8 +222,26 @@ void ui_push() {
       lv_label_set_text(runEta, "");
       show(V_RUN);
       break;
-    case V_RUN:
-      break;                       // idempotente: ignorado
+    case V_RUN: {
+      // 5 pushes seguidos (<1.5s entre cada uno) = RESCATE: aborta el
+      // proceso atorado en Windows y regresa a inicio limpio.
+      uint32_t now = millis();
+      if (now - lastRunPush > 1500) runPushes = 0;
+      lastRunPush = now;
+      runPushes++;
+      if (runPushes >= 5) {
+        runPushes = 0;
+        tme_request_abort();
+        abortCooldownUntil = now + 12000;   // deja que el agente limpie
+        sawRun = false;
+        show(V_IDLE);
+      } else if (runPushes >= 2) {
+        char b[44];
+        snprintf(b, sizeof(b), "Cancelar: %d toques mas", 5 - runPushes);
+        lv_label_set_text(runPhrase, b);
+      }
+      break;
+    }
     case V_DONE:
     case V_ERROR:
       tme_request_silence();             // acknowledge: calla la alarma MP3
@@ -231,7 +253,8 @@ void ui_push() {
 
 void ui_long() {
   if (view == V_CONFIRM) show(V_IDLE);   // cancelar confirmacion
-  if (view == V_RUN) { sawRun = false; show(V_IDLE); }   // escape manual
+  // V_RUN: el escape es SOLO con 5 pushes (un escape local rebotaria:
+  // el agente sigue reportando el estado y la UI volveria a la barra)
   if (view == V_DONE || view == V_ERROR) {
     tme_request_silence();
     dismissed = true; sawRun = false; show(V_IDLE);
@@ -256,7 +279,8 @@ void ui_tick() {
   if (isRunning) dismissed = false;
 
   // proceso corriendo (incluso iniciado desde el escritorio) -> mostrar barra
-  if (isRunning && (view == V_IDLE || view == V_CONFIRM)) {
+  // (salvo justo despues de un abort: dar tiempo a que el agente limpie)
+  if (isRunning && millis() > abortCooldownUntil && (view == V_IDLE || view == V_CONFIRM)) {
     sawRun = true; runT = millis(); sawAgentRun = true; runCreep = 5;
     show(V_RUN);
   }

@@ -8,11 +8,13 @@ TmeStatus g_tme;
 static SemaphoreHandle_t s_mtx = nullptr;
 static volatile bool s_doReset = false;
 static volatile bool s_doSilence = false;
+static volatile bool s_doAbort = false;
 
 bool tme_lock(uint32_t ms) { return s_mtx && xSemaphoreTake(s_mtx, pdMS_TO_TICKS(ms)) == pdTRUE; }
 void tme_unlock() { if (s_mtx) xSemaphoreGive(s_mtx); }
 void tme_request_reset() { s_doReset = true; }
 void tme_request_silence() { s_doSilence = true; }
+void tme_request_abort() { s_doAbort = true; }
 
 static String baseUrl() {
   return String("http://") + TME_AGENT_HOST + ":" + TME_AGENT_PORT;
@@ -104,6 +106,11 @@ static void tmeTask(void *pv) {
     if (s_doSilence) {
       s_doSilence = false;
       doPost("/silence");                 // acknowledge: apaga alarma + dialogos
+    }
+    if (s_doAbort) {
+      s_doAbort = false;
+      doPost("/abort");                   // rescate: limpia todo del lado Windows
+      lastPoll = 0;
     }
     if (millis() - lastPoll > 1500) {
       lastPoll = millis();
