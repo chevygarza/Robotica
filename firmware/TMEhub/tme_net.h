@@ -15,5 +15,6 @@ extern TmeStatus g_tme;
 
 void tme_begin();           // WiFi + task de polling (cada 1.5s)
 void tme_request_reset();   // POST /reset (async, idempotente en el agente)
+void tme_request_silence(); // POST /silence (apaga alarma MP3 + cierra dialogos)
 bool tme_lock(uint32_t ms = 30);
 void tme_unlock();

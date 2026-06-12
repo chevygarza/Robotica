@@ -2,8 +2,10 @@
 #  TME Agent - expone el estado del reseteo por HTTP (LAN)
 #  para la perilla (CrowPanel). Espejo de barra_progreso.ps1.
 #
-#  GET  /status -> JSON {state, pct, eta_s, running, signal...}
-#  POST /reset  -> lanza PC26_V1.exe (con anti-duplicado)
+#  GET  /status  -> JSON {state, pct, eta_s, running, signal...}
+#  POST /reset   -> lanza PC26_V1.exe (con anti-duplicado)
+#  POST /silence -> mata VLC (alarma FIN.mp3 en loop) y cierra los
+#                   dialogos de listo/error (acknowledge desde la perilla)
 #
 #  Correr con:  powershell -ExecutionPolicy Bypass -File tme_agent.ps1
 #  (ver INSTALL.md para dejarlo permanente con Task Scheduler)
@@ -90,6 +92,16 @@ while ($listener.IsListening) {
     }
     elseif ($req.HttpMethod -eq 'POST' -and $req.Url.AbsolutePath -eq '/reset') {
       $body = Start-Reset; $res.StatusCode = 200
+    }
+    elseif ($req.HttpMethod -eq 'POST' -and $req.Url.AbsolutePath -eq '/silence') {
+      # Mata la alarma (VLC en loop) y los dialogos de listo/error.
+      # Importante: un dialogo huerfano encima puede robarle clicks al
+      # siguiente macro, por eso tambien se cierran aqui.
+      Stop-Process -Name vlc -Force -ErrorAction SilentlyContinue
+      Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -and $_.CommandLine -match 'listo_reseteo|error_reseteo|reseteo_completo' } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+      $body = '{"ok":true}'; $res.StatusCode = 200
     }
   } catch { $body = '{"error":"internal"}'; $res.StatusCode = 500 }
 

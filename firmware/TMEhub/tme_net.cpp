@@ -7,10 +7,12 @@
 TmeStatus g_tme;
 static SemaphoreHandle_t s_mtx = nullptr;
 static volatile bool s_doReset = false;
+static volatile bool s_doSilence = false;
 
 bool tme_lock(uint32_t ms) { return s_mtx && xSemaphoreTake(s_mtx, pdMS_TO_TICKS(ms)) == pdTRUE; }
 void tme_unlock() { if (s_mtx) xSemaphoreGive(s_mtx); }
 void tme_request_reset() { s_doReset = true; }
+void tme_request_silence() { s_doSilence = true; }
 
 static String baseUrl() {
   return String("http://") + TME_AGENT_HOST + ":" + TME_AGENT_PORT;
@@ -55,14 +57,14 @@ static bool pollStatus() {
   return ok;
 }
 
-static void doReset() {
+static void doPost(const char *path) {
   WiFiClient client; HTTPClient http;
   http.setConnectTimeout(3000);
   http.setTimeout(4000);
-  if (!http.begin(client, baseUrl() + "/reset")) return;
+  if (!http.begin(client, baseUrl() + path)) return;
   http.addHeader("Content-Type", "application/json");
   int code = http.sendRequest("POST", "{}");
-  Serial.printf("[tme] POST /reset -> %d\n", code);
+  Serial.printf("[tme] POST %s -> %d\n", path, code);
   http.end();
 }
 
@@ -96,8 +98,12 @@ static void tmeTask(void *pv) {
     }
     if (s_doReset) {
       s_doReset = false;
-      doReset();
+      doPost("/reset");
       lastPoll = 0;                       // poll inmediato tras disparar
+    }
+    if (s_doSilence) {
+      s_doSilence = false;
+      doPost("/silence");                 // acknowledge: apaga alarma + dialogos
     }
     if (millis() - lastPoll > 1500) {
       lastPoll = millis();

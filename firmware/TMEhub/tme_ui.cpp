@@ -222,6 +222,7 @@ void ui_push() {
       break;                       // idempotente: ignorado
     case V_DONE:
     case V_ERROR:
+      tme_request_silence();             // acknowledge: calla la alarma MP3
       dismissed = true; sawRun = false;
       show(V_IDLE);
       break;
@@ -231,7 +232,10 @@ void ui_push() {
 void ui_long() {
   if (view == V_CONFIRM) show(V_IDLE);   // cancelar confirmacion
   if (view == V_RUN) { sawRun = false; show(V_IDLE); }   // escape manual
-  if (view == V_DONE || view == V_ERROR) { dismissed = true; sawRun = false; show(V_IDLE); }
+  if (view == V_DONE || view == V_ERROR) {
+    tme_request_silence();
+    dismissed = true; sawRun = false; show(V_IDLE);
+  }
 }
 
 void ui_tick() {
