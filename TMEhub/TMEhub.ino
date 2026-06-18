@@ -35,10 +35,12 @@ static void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t
   lv_disp_flush_ready(disp);
 }
 
-// El tactil SOLO despierta la pantalla; no ejecuta acciones (ambiente
-// industrial: un trapazo limpiando no debe disparar nada).
+// El touch (cst816t) dispara TOQUES FANTASMA (defecto electrico de la linea
+// INT): por eso ya NO refresca la actividad -> el sleep de 60s si se alcanza.
+// La unica fuente de "despertar" es la perilla (girar/push), que es como el
+// operador usa el equipo. Se sigue leyendo el chip solo para consumir el evento.
 static void my_touch_read(lv_indev_drv_t *drv, lv_indev_data_t *data) {
-  if (touch.available() && !(touch.x == 0 && touch.y == 0)) g_lastActivity = millis();
+  touch.available();
   data->state = LV_INDEV_STATE_REL;
 }
 
@@ -83,10 +85,12 @@ static void powerUpScreen() {
   pinMode(PIN_RGB_PWR, OUTPUT);   digitalWrite(PIN_RGB_PWR, HIGH);
 }
 
+static const int BL_PCT = 55;   // brillo fijo (menos calor/desgaste, prendida 24/7)
+
 static void initBacklight() {
   ledcSetup(BL_PWM_CH, BL_PWM_FREQ, BL_PWM_RES);
   ledcAttachPin(PIN_LCD_BL, BL_PWM_CH);
-  ledcWrite(BL_PWM_CH, (80 * 255) / 100);   // 80% fijo (nave industrial)
+  ledcWrite(BL_PWM_CH, (BL_PCT * 255) / 100);
 }
 
 static void screenSleep() {
@@ -97,7 +101,7 @@ static void screenSleep() {
 }
 
 static void screenWake() {
-  ledcWrite(BL_PWM_CH, (80 * 255) / 100);
+  ledcWrite(BL_PWM_CH, (BL_PCT * 255) / 100);
   digitalWrite(PIN_PWR_LED, LOW);
   digitalWrite(PIN_RGB_PWR, HIGH);
   g_asleep = false;

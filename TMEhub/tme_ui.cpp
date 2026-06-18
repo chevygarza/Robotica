@@ -38,7 +38,14 @@ static bool sawRun = false;          // presenciamos el proceso
 
 // ---------- Widgets ----------
 static lv_obj_t *scr[5];
-static lv_obj_t *idleDot;
+// V_IDLE cambia de cara segun conexion:
+//  online  -> fondo naranja, "Iniciar reseteo" + circulo verde grande
+//  offline -> fondo rojo, mensaje grande "usar pantalla interna"
+static lv_obj_t *idleTitle;     // "TME" (siempre)
+static lv_obj_t *idleAction;    // "Iniciar reseteo" (solo online)
+static lv_obj_t *idleDot;       // circulo verde grande (solo online)
+static lv_obj_t *idleOffMsg;    // mensaje offline (solo offline)
+static int idleOnlineShown = -1;   // -1 = sin pintar aun
 static lv_obj_t *runStep, *runBar, *runEta, *runPhrase;
 static uint32_t runT = 0;          // cuando entramos a RUN
 static bool sawAgentRun = false;   // ¿el agente confirmo que corre?
@@ -63,7 +70,7 @@ static lv_obj_t* newScreen(lv_color_t bg) {
   return s;
 }
 
-// ---------- V_IDLE (fondo naranja TME, minimal) ----------
+// ---------- V_IDLE (dos caras: naranja=online / rojo=offline) ----------
 static void buildIdle() {
   lv_obj_t *s = lv_obj_create(NULL);
   lv_obj_set_style_bg_color(s, COL_TME, 0);
@@ -71,24 +78,49 @@ static void buildIdle() {
   lv_obj_clear_flag(s, LV_OBJ_FLAG_SCROLLABLE);
   scr[V_IDLE] = s;
 
-  // TME lo mas grande posible
-  lv_obj_t *t = mkLabel(s, &lv_font_montserrat_48, COL_TXT);
-  lv_label_set_text(t, "TME");
-  lv_obj_align(t, LV_ALIGN_CENTER, 0, -52);
+  // "TME" grande, siempre visible
+  idleTitle = mkLabel(s, &lv_font_montserrat_48, COL_TXT);
+  lv_label_set_text(idleTitle, "TME");
+  lv_obj_align(idleTitle, LV_ALIGN_CENTER, 0, -70);
 
-  lv_obj_t *st = mkLabel(s, &lv_font_montserrat_28, COL_TXT);
-  lv_label_set_text(st, "Iniciar reseteo");
-  lv_obj_align(st, LV_ALIGN_CENTER, 0, 6);
+  // --- ONLINE: accion + circulo verde grande ---
+  idleAction = mkLabel(s, &lv_font_montserrat_28, COL_TXT);
+  lv_label_set_text(idleAction, "Iniciar reseteo");
+  lv_obj_align(idleAction, LV_ALIGN_CENTER, 0, -8);
 
-  // LED de estado, hasta abajo (verde = en linea / rojo = no)
   idleDot = lv_obj_create(s);
-  lv_obj_set_size(idleDot, 26, 26);
+  lv_obj_set_size(idleDot, 64, 64);                 // verde GRANDE (operador mayor)
   lv_obj_set_style_radius(idleDot, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_border_width(idleDot, 2, 0);
+  lv_obj_set_style_border_width(idleDot, 3, 0);
   lv_obj_set_style_border_color(idleDot, COL_TXT, 0);
-  lv_obj_set_style_bg_color(idleDot, COL_BAD, 0);
+  lv_obj_set_style_bg_color(idleDot, COL_OK, 0);
   lv_obj_clear_flag(idleDot, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_align(idleDot, LV_ALIGN_BOTTOM_MID, 0, -40);
+  lv_obj_align(idleDot, LV_ALIGN_CENTER, 0, 80);
+
+  // --- OFFLINE: mensaje grande (sobre fondo rojo) ---
+  idleOffMsg = mkLabel(s, &lv_font_montserrat_22, COL_TXT);
+  lv_label_set_long_mode(idleOffMsg, LV_LABEL_LONG_WRAP);
+  lv_obj_set_width(idleOffMsg, 300);
+  lv_obj_set_style_text_align(idleOffMsg, LV_TEXT_ALIGN_CENTER, 0);
+  lv_label_set_text(idleOffMsg, "Favor de usar pantalla interna\no contactar a administrador");
+  lv_obj_align(idleOffMsg, LV_ALIGN_CENTER, 0, 40);
+  lv_obj_add_flag(idleOffMsg, LV_OBJ_FLAG_HIDDEN);   // arranca oculto
+}
+
+// Cambia la cara de V_IDLE segun conexion (solo cuando cambia, sin parpadeo)
+static void idleSetOnline(bool online) {
+  if (idleOnlineShown == (int)online) return;
+  idleOnlineShown = online;
+  lv_obj_set_style_bg_color(scr[V_IDLE], online ? COL_TME : COL_BAD, 0);
+  if (online) {
+    lv_obj_clear_flag(idleAction, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(idleDot,    LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(idleOffMsg,   LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_add_flag(idleAction,   LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(idleDot,      LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(idleOffMsg, LV_OBJ_FLAG_HIDDEN);
+  }
 }
 
 // ---------- V_CONFIRM (naranja TME) ----------
@@ -186,9 +218,11 @@ static void buildError() {
   lv_obj_align(m, LV_ALIGN_CENTER, 0, 38);
 }
 
+static uint32_t endScreenT = 0;   // momento de entrar a V_DONE/V_ERROR (auto-push)
 static void show(View v, lv_scr_load_anim_t anim = LV_SCR_LOAD_ANIM_FADE_ON) {
   if (view == v) return;
   view = v;
+  if (v == V_DONE || v == V_ERROR) endScreenT = millis();
   lv_scr_load_anim(scr[v], anim, 220, 0, false);
 }
 
@@ -265,6 +299,16 @@ void ui_tick() {
   // timeout de confirmacion
   if (view == V_CONFIRM && millis() - confirmT > 10000) show(V_IDLE);
 
+  // AUTO-PUSH: si nadie hace acknowledge en V_DONE/V_ERROR, a los 10 min se
+  // silencia solo (calla la alarma de la PC + cierra el dialogo) y vuelve a
+  // home -> deja dormir la pantalla. Los operadores olvidan el ultimo push y
+  // la alarma sonaba toda la tarde hasta el reinicio nocturno de la PC.
+  if ((view == V_DONE || view == V_ERROR) && millis() - endScreenT > 600000UL) {
+    tme_request_silence();
+    dismissed = true; sawRun = false;
+    show(V_IDLE);
+  }
+
   static uint32_t last = 0;
   if (millis() - last < 300) return;
   last = millis();
@@ -326,9 +370,9 @@ void ui_tick() {
     }
   }
 
-  // status en reposo: solo el LED (verde = en linea / rojo = no)
+  // status en reposo: cambia la cara completa (naranja+verde / rojo+aviso)
   if (view == V_IDLE) {
     bool online = (st.wifiUp && st.state != TME_OFFLINE);
-    lv_obj_set_style_bg_color(idleDot, online ? COL_OK : COL_BAD, 0);
+    idleSetOnline(online);
   }
 }

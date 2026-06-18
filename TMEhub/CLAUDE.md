@@ -29,8 +29,10 @@ Perilla (este firmware, WiFi "TME PATIO")
 ```
 
 ## UI: vistas y gestos (tme_ui.cpp)
-- **V_IDLE** naranja: "TME" + "Iniciar reseteo" + LED (verde=agente visible,
-  rojo=sin WiFi o sin agente). Push solo arma si online.
+- **V_IDLE** dos caras (idleSetOnline togglea, ambas siguen siendo V_IDLE):
+  ONLINE = naranja + "TME" + "Iniciar reseteo" + circulo verde GRANDE 64px.
+  OFFLINE = rojo + "TME" + "Favor de usar pantalla interna o contactar a
+  administrador". Push solo arma si online.
 - **V_CONFIRM**: push 2 = dispara; timeout 10s; push largo cancela.
 - **V_RUN**: barra blanca (creep hasta 38% mientras el agente confirma, luego
   % real), label del paso, "faltan mm:ss", frases cada 6s.
@@ -42,9 +44,14 @@ Perilla (este firmware, WiFi "TME PATIO")
   (evita el "done" stale del reseteo anterior).
 - **V_ERROR** ROJO solido (unica pantalla no-naranja, alarma intencional):
   "Reporta el error a administracion". Push = silence + home.
+- **AUTO-PUSH (V_DONE/V_ERROR)**: si nadie hace acknowledge en 10 min, se
+  dispara silence solo (calla alarma + cierra dialogo en la PC) y vuelve a
+  home -> deja dormir. Los operadores olvidan el ultimo push y la alarma
+  sonaba toda la tarde hasta el reinicio nocturno de la PC. (endScreenT + 600s).
 
-Tactil SOLO despierta la pantalla (trapazos no disparan). Sleep 60s solo en
-idle. Brillo fijo 80%.
+Sleep 60s solo en idle. Brillo fijo 55% (BL_PCT; menos calor/desgaste 24/7).
+El TOUCH ya NO despierta la pantalla (ver gotcha del fantasma): solo la
+perilla (girar/push) es fuente de wake.
 
 ## Red en TME (critico — saga jun-2026)
 - Modem Telmex: LAN cableada **192.168.86.x** (mini PC por cable = .86.53).
@@ -65,6 +72,19 @@ idle. Brillo fijo 80%.
   + begin() forzados (cada 60s max).
 
 ## Gotchas propios
+- TOUCH FANTASMA (cst816t): el chip dispara toques que nadie hizo, en rafagas
+  intermitentes (defecto electrico de la linea INT; no es mugre). Cada fantasma
+  refrescaba g_lastActivity -> la pantalla NUNCA dormia. FIX: my_touch_read ya
+  NO actualiza g_lastActivity (touch fuera del wake; solo perilla despierta).
+  El sintoma es intermitente: a veces dormia, a veces no -> no te confies de
+  "ya jala", el fix es de raiz.
+- ALIMENTACION: usar CARGADOR DE PARED (5V), NUNCA el USB de la PC. El USB-CDC
+  nativo del S3 + un host que enumere el puerto (cada reinicio de la PC) puede
+  meterla en MODO DOWNLOAD (pantalla negra, sin UI). La perilla habla por WiFi,
+  no necesita el cable de datos para nada. Cargador en la misma regleta, aislada.
+- MODO DOWNLOAD al leer serial: ver regla dura #7. En el Mac Mini de la oficina
+  el flasheo/serial mete la placa en download facil; en la laptop de Jose
+  siempre funciona bien -> flashear desde la laptop. Revivir = reflashear.
 - HTTP.sys de Windows rechaza POST sin cuerpo (411) => sendRequest("POST", "{}").
 - Señal "Weak" del WiFi de la mini PC en Google Home: vigilar cuando todo
   quede dentro de la caja metalica (si hay drops, considerar 2.4GHz/reposicion).
