@@ -102,6 +102,20 @@ Caja tipo registro con ventilacion; perilla en la tapa (agujero 51mm,
 pendiente broca). Dummy + mini PC adentro. Touchscreen vertical de respaldo
 ~1 mes y se retira.
 
+## Ideas descartadas (referencia futura)
+- LEDs AMBIENTALES naranja en reseteo (2026-jun): la CrowPanel tiene 8 NeoPixel
+  (data GPIO48 = PIN_RGB_DIN, power GPIO17 = PIN_RGB_PWR). Idea: encenderlos
+  naranja en V_RUN como senal visible desde lejos. **DESCARTADO**: son "fase
+  posterior" (atras de la placa) -> al montar la perilla en la tapa de la caja
+  el halo queda ADENTRO, no se ve. Si se retoma (otra carcasa con borde
+  translucido): Adafruit_NeoPixel 1.15.1, strip(8, PIN_RGB_DIN, NEO_GRB+NEO_KHZ800),
+  PIN_RGB_PWR HIGH, strip.setBrightness(110), strip.Color(255,50,0) = naranja
+  calido VALIDADO en hardware (a brillo pleno se "lava" a blanco). Control:
+  ui_led_mode()==1 en V_RUN; ledsApply() en loop + ledsApply(true) en screenWake;
+  strip.begin/clear/show en setup (mata la basura inicial de los LEDs). El codigo
+  completo estuvo en el working tree, revertido tras f987f63. ALTERNATIVA para
+  senal FRONTAL (si se ve montada): pulsar/parpadear el fondo de pantalla en V_RUN.
+
 ## Pendientes
 - Test en sitio: silence (push en Listo) y abort (5-push) — firmware y agente
   ya desplegados, falta validar en un reseteo real.
