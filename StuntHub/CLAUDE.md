@@ -19,7 +19,7 @@ Sleep 30s. Brillo: 70% dia / 25% de 10pm a 7am (NTP).
 | 3 | Mercados | CoinGecko BTC/ETH/SOL c/5min (retry 30s) | refresh |
 | 4 | Servidor | health.json del Mac Mini (192.168.86.66:8765, regenera c/60s) | refresh |
 | 5 | Wallpapers | GIFs embebidos DBZ/Pokemon/Zelda (180px + zoom 2x = full 360) | siguiente GIF |
-| 6 | PC Gamer | estado: gamer_pc.online del health.json | apagada: WoL / encendida: apagar |
+| 6 | PC Gamer | estado: gamer_pc.online del health.json | push: prender(WoL)/apagar; + botones tactiles Normal/Sim/TV (perfiles monitor+audio, solo online) |
 
 ## Modulos
 - `app_net.cpp` — clima + X (TLS con certs.h ISRG Root X1). Task core 0.
@@ -37,9 +37,11 @@ Sleep 30s. Brillo: 70% dia / 25% de 10pm a 7am (NTP).
 ## Infraestructura casera (red 192.168.86.x principal / 87.x invitados-AISLADA)
 - Mac Mini servidor 24/7: .66:8765 health.json (cron/launchd; tambien corre
   el bot Telegram con wol.py — NO TOCAR ese lado).
-- PC gamer DESKTOP-729DKM8: Ethernet .56 (reservar DHCP pendiente),
-  WoL MAC c8:7f:54:67:6f:04 (la cableada; al encender responde otra interfaz).
-  pc_agent.ps1 instalado como tarea ONSTART/SYSTEM.
+- PC gamer DESKTOP-729DKM8: Ethernet **192.168.86.58** (era .56; DHCP la movio;
+  VERIFICAR en vivo siempre - regla #5; reservar DHCP pendiente). WoL MAC
+  c8:7f:54:67:6f:04 (la cableada; al encender responde otra interfaz).
+  pc_agent.ps1 como tarea ONSTART/SYSTEM, puerto 8767, token "stunthub".
+  Endpoints: /status /shutdown /cancel /normal /sim /tv. Usuario Windows: Chevy.
 - Hue bridge: .49.
 
 ## Gotchas propios
@@ -51,6 +53,13 @@ Sleep 30s. Brillo: 70% dia / 25% de 10pm a 7am (NTP).
 - gamer_pc "done"/estado viejo: la UI de PC Gamer verifica transiciones, no
   estados absolutos.
 - Wallpapers a 360 nativo = NO (8x CPU, +1.5MB); el zoom 2x es la decision.
+- PERFILES PC (Normal/Sim/TV): pc_agent corre como SYSTEM (sesion 0). Los .ps1
+  de perfil cambian DISPLAY/AUDIO y abren Steam = REQUIEREN sesion interactiva;
+  desde SYSTEM fallan en silencio. SOLUCION: los endpoints /normal|/sim|/tv NO
+  corren el .ps1; disparan tareas programadas StuntHub-Normal/Sim/TV creadas con
+  /it /ru Chevy (corren en la sesion logueada). Firmware: pc_profile_async() en
+  app_wol = espejo de pc_shutdown_async, POST /<path>?t=token (path=normal|sim|tv).
+  Los modos solo se muestran/funcionan con la PC online (g_srv.pc_online).
 
 ## Pendientes
 - Comprar CrowPanel #2 -> restaurar StuntHub en la placa original.

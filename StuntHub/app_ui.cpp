@@ -69,6 +69,20 @@ enum PgView { PG_IDLE, PG_CONFIRM, PG_WAKING, PG_CONFIRM_OFF, PG_OFFING };
 static PgView pgView = PG_IDLE;
 static uint32_t pgT = 0, pgInfoUntil = 0, pgLastReq = 0;
 static lv_obj_t *pgIcon, *pgDot, *pgStatus, *pgHint;
+// Modos de monitores/audio (botones tactiles, solo con la PC encendida)
+static lv_obj_t *pgModeBtn[3], *pgModeLbl[3];
+static int  pgModesShown = -1;                       // -1 = sin pintar
+static const char *PG_MODES[3] = { "Normal", "Sim", "TV" };
+static const char *PG_PATHS[3] = { "normal", "sim", "tv" };
+
+// Estado de la PC: prioriza la consulta DIRECTA al agente (tiempo real, ~2s);
+// si aun no hay, cae al health.json del Mac Mini. NO llamar dentro de server_lock.
+static bool pcOnlineNow() {
+  if (g_pcDirectState >= 0) return g_pcDirectState == 1;
+  bool o = false;
+  if (server_lock(20)) { o = g_srv.pc_valid && g_srv.pc_online; server_unlock(); }
+  return o;
+}
 
 // --- overview clima ---
 static lv_obj_t *w_clock, *w_date, *w_temp, *w_cond, *w_extra, *w_wifi, *w_rain;
@@ -667,25 +681,35 @@ static void buildWallpaperScreen() {
   buildDots(s, 5);
 }
 
-// ---------- App 6: PC Gamer (Wake-on-LAN) ----------
+// ---------- App 6: PC Gamer (WoL + apagar + modos) ----------
+// Toca un modo -> dispara el perfil de monitores/audio en la PC (solo online).
+static void pgModeCb(lv_event_t *e) {
+  int i = (int)(intptr_t)lv_event_get_user_data(e);
+  if (!pcOnlineNow()) return;                // modos solo con la PC encendida
+  pc_profile_async(PG_PATHS[i]);
+  char b[40]; snprintf(b, sizeof(b), "Modo %s activado", PG_MODES[i]);
+  lv_label_set_text(pgHint, b);
+  pgInfoUntil = millis() + 4000;
+}
+
 static void buildGamerScreen() {
   lv_obj_t *s = newScreen();
   ovScr[6] = s;
 
   lv_obj_t *t = mkLabel(s, &lv_font_montserrat_18, COL_ACCENT);
   lv_label_set_text(t, "PC GAMER");
-  lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 42);
+  lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 30);
 
-  // boton/icono de poder grande
+  // ring + icono de poder (push = prender/apagar)
   lv_obj_t *ring = lv_obj_create(s);
-  lv_obj_set_size(ring, 110, 110);
+  lv_obj_set_size(ring, 80, 80);
   lv_obj_set_style_radius(ring, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_bg_color(ring, COL_CARD, 0);
   lv_obj_set_style_border_width(ring, 3, 0);
   lv_obj_set_style_border_color(ring, COL_ACCENT, 0);
   lv_obj_clear_flag(ring, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_align(ring, LV_ALIGN_CENTER, 0, -28);
-  pgIcon = mkLabel(ring, &lv_font_montserrat_48, COL_SUB);
+  lv_obj_align(ring, LV_ALIGN_CENTER, 0, -78);
+  pgIcon = mkLabel(ring, &lv_font_montserrat_28, COL_SUB);
   lv_label_set_text(pgIcon, LV_SYMBOL_POWER);
   lv_obj_center(pgIcon);
 
@@ -695,18 +719,37 @@ static void buildGamerScreen() {
   lv_obj_set_style_border_width(pgDot, 0, 0);
   lv_obj_set_style_bg_color(pgDot, COL_SUB, 0);
   lv_obj_clear_flag(pgDot, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_align(pgDot, LV_ALIGN_CENTER, -56, 56);
+  lv_obj_align(pgDot, LV_ALIGN_CENTER, -58, -18);
 
   pgStatus = mkLabel(s, &lv_font_montserrat_16, COL_TXT);
   lv_label_set_text(pgStatus, "Consultando...");
-  lv_obj_align(pgStatus, LV_ALIGN_CENTER, 8, 56);
+  lv_obj_align(pgStatus, LV_ALIGN_CENTER, 6, -18);
+
+  // Modos: Normal / Sim / TV (tactiles, ocultos si la PC esta apagada)
+  const int BW = 78, BH = 46, GAP = 6;
+  int total = BW * 3 + GAP * 2;
+  int startX = -(total / 2) + BW / 2;
+  for (int i = 0; i < 3; i++) {
+    lv_obj_t *b = lv_btn_create(s);
+    lv_obj_set_size(b, BW, BH);
+    lv_obj_align(b, LV_ALIGN_CENTER, startX + i * (BW + GAP), 40);
+    lv_obj_set_style_radius(b, 14, 0);
+    lv_obj_set_style_bg_color(b, COL_CARD, 0);
+    lv_obj_set_style_shadow_width(b, 0, 0);
+    lv_obj_add_event_cb(b, pgModeCb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+    lv_obj_t *l = mkLabel(b, &lv_font_montserrat_16, COL_TXT);
+    lv_label_set_text(l, PG_MODES[i]);
+    lv_obj_center(l);
+    pgModeBtn[i] = b; pgModeLbl[i] = l;
+    lv_obj_add_flag(b, LV_OBJ_FLAG_HIDDEN);   // arrancan ocultos (hasta saber online)
+  }
 
   pgHint = mkLabel(s, &lv_font_montserrat_14, COL_SUB);
   lv_label_set_long_mode(pgHint, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(pgHint, 250);
   lv_obj_set_style_text_align(pgHint, LV_TEXT_ALIGN_CENTER, 0);
   lv_label_set_text(pgHint, "push: prender");
-  lv_obj_align(pgHint, LV_ALIGN_CENTER, 0, 96);
+  lv_obj_align(pgHint, LV_ALIGN_BOTTOM_MID, 0, -28);
 
   buildDots(s, 6);
 }
@@ -757,8 +800,7 @@ void ui_select() {
   if (curApp == 4) { server_request(); return; }
   // --- App PC Gamer: push = prender (con confirmacion) ---
   if (curApp == 6) {
-    bool online = false;
-    if (server_lock(20)) { online = g_srv.pc_valid && g_srv.pc_online; server_unlock(); }
+    bool online = pcOnlineNow();
     if (pgView == PG_IDLE) {
       if (online) {
         pgView = PG_CONFIRM_OFF; pgT = millis();
@@ -879,6 +921,15 @@ void ui_back() {
 }
 
 void ui_tick() {
+  // PC Gamer: estado en tiempo real -> consulta directa al agente cada 3s
+  // SOLO mientras se ve la app 6 (no carga la red el resto del tiempo).
+  static uint32_t pcPollT = 0;
+  if (curApp == 6) {
+    if (millis() - pcPollT > 3000) { pcPollT = millis(); pc_status_poll(); }
+  } else {
+    g_pcDirectState = -1;   // fuera de la app: olvida el directo (usa health.json)
+  }
+
   // --- Reloj ---
   struct tm tm;
   static const char *dias[7]   = {"Dom","Lun","Mar","Mie","Jue","Vie","Sab"};
@@ -1036,9 +1087,12 @@ void ui_tick() {
     }
 
     // --- PC Gamer ---
-    bool pcKnown  = g_srv.valid && g_srv.pc_valid;
-    bool pcOnline = pcKnown && g_srv.pc_online;
+    bool pcKnownH  = g_srv.valid && g_srv.pc_valid;
+    bool pcOnlineH = pcKnownH && g_srv.pc_online;
     server_unlock();
+    // Prioriza la consulta directa al agente (tiempo real ~2s); fallback health.json
+    bool pcKnown  = (g_pcDirectState >= 0) || pcKnownH;
+    bool pcOnline = (g_pcDirectState >= 0) ? (g_pcDirectState == 1) : pcOnlineH;
 
     if (pcKnown) {
       lv_obj_set_style_bg_color(pgDot, pcOnline ? COL_OK : COL_SUB, 0);
@@ -1046,6 +1100,16 @@ void ui_tick() {
       lv_obj_set_style_text_color(pgIcon, pcOnline ? COL_OK : COL_SUB, 0);
     } else {
       lv_label_set_text(pgStatus, "Consultando...");
+    }
+
+    // Modos Normal/Sim/TV: visibles solo con la PC encendida (sin parpadeo)
+    int wantModes = (pcKnown && pcOnline) ? 1 : 0;
+    if (pgModesShown != wantModes) {
+      pgModesShown = wantModes;
+      for (int i = 0; i < 3; i++) {
+        if (wantModes) lv_obj_clear_flag(pgModeBtn[i], LV_OBJ_FLAG_HIDDEN);
+        else           lv_obj_add_flag(pgModeBtn[i], LV_OBJ_FLAG_HIDDEN);
+      }
     }
 
     if ((pgView == PG_CONFIRM || pgView == PG_CONFIRM_OFF) && millis() - pgT > 10000) {

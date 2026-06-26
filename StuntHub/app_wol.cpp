@@ -61,3 +61,51 @@ void pc_shutdown_async() {
   g_pcShutdownResult = 1;
   xTaskCreatePinnedToCore(shutdownTask, "pcoff", 6144, nullptr, 1, nullptr, 0);
 }
+
+// ---- Perfil (Normal/Sim/TV): POST /<path> al pc_agent, en task propio ----
+static void profileTask(void *pv) {
+  const char *path = (const char *)pv;     // literal estatico (normal|sim|tv)
+  WiFiClient client; HTTPClient http;
+  http.setConnectTimeout(3000);
+  http.setTimeout(4000);
+  String url = String("http://") + GAMER_IP + ":" + GAMER_AGENT_PORT +
+               "/" + path + "?t=" + GAMER_TOKEN;
+  int code = -1;
+  if (http.begin(client, url)) {
+    http.addHeader("Content-Type", "application/json");
+    code = http.sendRequest("POST", "{}");   // HTTP.sys exige cuerpo (411 si no)
+    http.end();
+  }
+  Serial.printf("[wol] profile %s -> %d\n", path, code);
+  vTaskDelete(NULL);
+}
+
+void pc_profile_async(const char *path) {
+  xTaskCreatePinnedToCore(profileTask, "pcprof", 6144, (void *)path, 1, nullptr, 0);
+}
+
+// ---- Estado directo de la PC (GET /status al agente, tiempo real) ----
+volatile int g_pcDirectState = -1;
+static volatile bool s_statusBusy = false;
+
+static void statusTask(void *pv) {
+  WiFiClient client; HTTPClient http;
+  http.setConnectTimeout(2000);
+  http.setTimeout(2000);
+  String url = String("http://") + GAMER_IP + ":" + GAMER_AGENT_PORT +
+               "/status?t=" + GAMER_TOKEN;
+  int st = 0;                               // sin respuesta = apagada
+  if (http.begin(client, url)) {
+    if (http.GET() == 200) st = 1;          // respondio = encendida
+    http.end();
+  }
+  g_pcDirectState = st;
+  s_statusBusy = false;
+  vTaskDelete(NULL);
+}
+
+void pc_status_poll() {
+  if (s_statusBusy) return;                 // no encimar consultas
+  s_statusBusy = true;
+  xTaskCreatePinnedToCore(statusTask, "pcstat", 6144, nullptr, 1, nullptr, 0);
+}
