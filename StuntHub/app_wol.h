@@ -1,4 +1,5 @@
 #pragma once
+#include <Arduino.h>
 // Wake-on-LAN: manda el magic packet a la PC gamer.
 // Espejo de wol.py del Mac Mini: broadcast, puertos 9 y 7, 3 repeticiones.
 void wol_send();
@@ -13,9 +14,12 @@ void pc_shutdown_async();
 // del usuario. path debe ser un literal estatico (lo usa un task aparte).
 void pc_profile_async(const char *path);
 
-// Estado DIRECTO de la PC (GET /status al pc_agent): mas fresco que el
-// health.json del Mac Mini (que tarda hasta 60s). -1 = desconocido,
-// 0 = apagada (timeout), 1 = encendida (respondio). Llamar pc_status_poll()
-// periodicamente mientras se ve la app PC Gamer.
-extern volatile int g_pcDirectState;
-void pc_status_poll();
+// Estado DIRECTO de la PC (un task persistente consulta /status). Mas fresco
+// que el health.json del Mac Mini (hasta 60s). pc_status_begin() en setup;
+// pc_status_active(true) mientras se ve la app PC Gamer; pc_direct_state()
+// devuelve 1=encendida / 0=apagada / -1=desconocido.
+extern volatile int g_pcUptimeMin;    // uptime de la PC en minutos (-1=desconocido)
+extern volatile uint32_t g_pcLastOk;  // millis del ultimo GET 200
+void pc_status_begin();
+void pc_status_active(bool on);
+int  pc_direct_state();

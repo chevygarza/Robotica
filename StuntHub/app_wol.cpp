@@ -84,28 +84,47 @@ void pc_profile_async(const char *path) {
   xTaskCreatePinnedToCore(profileTask, "pcprof", 6144, (void *)path, 1, nullptr, 0);
 }
 
-// ---- Estado directo de la PC (GET /status al agente, tiempo real) ----
-volatile int g_pcDirectState = -1;
-static volatile bool s_statusBusy = false;
+// ---- Estado directo de la PC: UN task persistente que consulta /status ----
+// Robusto: el task nunca se crea/destruye (no se atora). El estado lo decide el
+// timestamp del ultimo GET 200: si hubo respuesta hace <10s -> encendida; si no
+// -> apagada. Asi un poll colgado a una PC apagada no deja el estado pegado.
+volatile int g_pcUptimeMin = -1;
+volatile uint32_t g_pcLastOk = 0;     // millis del ultimo GET 200 (0 = nunca)
+static volatile bool s_pollActive = false;
 
-static void statusTask(void *pv) {
-  WiFiClient client; HTTPClient http;
-  http.setConnectTimeout(2000);
-  http.setTimeout(2000);
-  String url = String("http://") + GAMER_IP + ":" + GAMER_AGENT_PORT +
-               "/status?t=" + GAMER_TOKEN;
-  int st = 0;                               // sin respuesta = apagada
-  if (http.begin(client, url)) {
-    if (http.GET() == 200) st = 1;          // respondio = encendida
-    http.end();
+static void pcStatusTask(void *pv) {
+  for (;;) {
+    if (s_pollActive && WiFi.status() == WL_CONNECTED) {
+      WiFiClient client; HTTPClient http;
+      http.setConnectTimeout(3000);
+      http.setTimeout(3000);
+      String url = String("http://") + GAMER_IP + ":" + GAMER_AGENT_PORT +
+                   "/status?t=" + GAMER_TOKEN;
+      int code = -1, uptime = -1;
+      if (http.begin(client, url)) {
+        code = http.GET();
+        if (code == 200) {
+          String body = http.getString();        // {"online":true,"uptime_min":N}
+          int k = body.indexOf("uptime_min");
+          if (k >= 0) { int c = body.indexOf(':', k); if (c >= 0) uptime = body.substring(c + 1).toInt(); }
+        }
+        http.end();
+      }
+      if (code == 200) { g_pcLastOk = millis(); g_pcUptimeMin = uptime; }
+      Serial.printf("[pc] GET -> %d up=%d\n", code, uptime);
+    }
+    vTaskDelay(pdMS_TO_TICKS(3000));
   }
-  g_pcDirectState = st;
-  s_statusBusy = false;
-  vTaskDelete(NULL);
 }
 
-void pc_status_poll() {
-  if (s_statusBusy) return;                 // no encimar consultas
-  s_statusBusy = true;
-  xTaskCreatePinnedToCore(statusTask, "pcstat", 6144, nullptr, 1, nullptr, 0);
+void pc_status_begin() {
+  xTaskCreatePinnedToCore(pcStatusTask, "pcstat", 8192, nullptr, 1, nullptr, 0);
+}
+
+void pc_status_active(bool on) { s_pollActive = on; }
+
+// 1 = encendida (GET 200 hace <10s), 0 = apagada, -1 = desconocido (nunca respondio)
+int pc_direct_state() {
+  if (g_pcLastOk == 0) return -1;
+  return (millis() - g_pcLastOk < 10000) ? 1 : 0;
 }

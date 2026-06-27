@@ -64,24 +64,39 @@ static int wallCur = 0;
 static lv_img_dsc_t wallDsc[3];
 static const char *wallNames[3] = { "Dragon Ball", "Pokemon", "Zelda" };
 
-// --- PC Gamer (app 6) ---
-enum PgView { PG_IDLE, PG_CONFIRM, PG_WAKING, PG_CONFIRM_OFF, PG_OFFING };
-static PgView pgView = PG_IDLE;
+// --- PC Gamer (app 6): cover + menu navegable con la perilla ---
+enum PgView { PG_COVER, PG_MENU, PG_WAKING, PG_OFFING };
+static PgView pgView = PG_COVER;
 static uint32_t pgT = 0, pgInfoUntil = 0, pgLastReq = 0;
-static lv_obj_t *pgIcon, *pgDot, *pgStatus, *pgHint;
-// Modos de monitores/audio (botones tactiles, solo con la PC encendida)
-static lv_obj_t *pgModeBtn[3], *pgModeLbl[3];
-static int  pgModesShown = -1;                       // -1 = sin pintar
-static const char *PG_MODES[3] = { "Normal", "Sim", "TV" };
-static const char *PG_PATHS[3] = { "normal", "sim", "tv" };
+static lv_obj_t *pgIcon, *pgDot, *pgStatus, *pgHint;   // cover
+// menu (lista navegable: girar mueve, push activa, manten = atras)
+static lv_obj_t *pgMenuScr, *pgMenuTitle, *pgMenuBox, *pgMenuHint;
+static lv_obj_t *pgItems[5];
+static int pgItemCount = 0, pgSel = 0;
+enum PgAction { PA_ON, PA_OFF, PA_NORMAL, PA_SIM, PA_TV };
+static PgAction pgActions[5];
+static bool pgConfirming = false;       // 1er push en Prender/Apagar pide confirmar
+static uint32_t pgBootT = 0;            // momento del WoL (lockout de arranque)
+static const char *PG_PATHS[3] = { "normal", "sim", "tv" };  // indexado por action-PA_NORMAL
 
 // Estado de la PC: prioriza la consulta DIRECTA al agente (tiempo real, ~2s);
 // si aun no hay, cae al health.json del Mac Mini. NO llamar dentro de server_lock.
 static bool pcOnlineNow() {
-  if (g_pcDirectState >= 0) return g_pcDirectState == 1;
+  int d = pc_direct_state();
+  if (d >= 0) return d == 1;
   bool o = false;
   if (server_lock(20)) { o = g_srv.pc_valid && g_srv.pc_online; server_unlock(); }
   return o;
+}
+
+// LOCKOUT de arranque: los perfiles (Normal/Sim/TV) solo cuando la PC esta
+// encendida Y ESTABLE (uptime>=2min). Asi un perfil no se dispara en pleno boot.
+// Fallback: si tras 150s del WoL no hay uptime>=2, habilitar de todos modos.
+static bool pcReady() {
+  if (pc_direct_state() != 1) return false;
+  if (g_pcUptimeMin >= 2) return true;
+  if (pgBootT && millis() - pgBootT > 150000) return true;   // fallback duro
+  return false;
 }
 
 // --- overview clima ---
@@ -681,15 +696,81 @@ static void buildWallpaperScreen() {
   buildDots(s, 5);
 }
 
-// ---------- App 6: PC Gamer (WoL + apagar + modos) ----------
-// Toca un modo -> dispara el perfil de monitores/audio en la PC (solo online).
-static void pgModeCb(lv_event_t *e) {
-  int i = (int)(intptr_t)lv_event_get_user_data(e);
-  if (!pcOnlineNow()) return;                // modos solo con la PC encendida
-  pc_profile_async(PG_PATHS[i]);
-  char b[40]; snprintf(b, sizeof(b), "Modo %s activado", PG_MODES[i]);
-  lv_label_set_text(pgHint, b);
-  pgInfoUntil = millis() + 4000;
+// ---------- App 6: PC Gamer (cover + menu navegable) ----------
+// Cover: estado de la PC; push = entra al menu. Menu: girar mueve, push activa,
+// manten = atras. Modos (Normal/Sim/TV) solo cuando la PC esta encendida.
+static int pgMenuOnline = -1;             // estado con que se construyo el menu
+static int pgReadyShown = -1;             // ultimo "ready" pintado en el menu
+
+static void pgApplyHighlight() {
+  bool ready = pcReady();
+  for (int i = 0; i < pgItemCount; i++) {
+    bool sel = (i == pgSel);
+    bool isMode = (pgActions[i] == PA_NORMAL || pgActions[i] == PA_SIM || pgActions[i] == PA_TV);
+    bool locked = isMode && !ready;          // perfil bloqueado durante el boot
+    lv_obj_set_style_bg_color(pgItems[i], COL_ACCENT, 0);
+    lv_obj_set_style_bg_opa(pgItems[i], (sel && !locked) ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+    lv_obj_set_style_text_color(pgItems[i], locked ? COL_SUB : (sel ? COL_BG : COL_TXT), 0);
+  }
+}
+
+// Apagada -> [Prender]. Encendida -> [Apagar, Normal, Sim, TV].
+static void pgRenderMenu() {
+  lv_obj_clean(pgMenuBox);
+  pgConfirming = false;
+  bool online = pcOnlineNow();
+  pgMenuOnline = online ? 1 : 0;
+  const char *labels[5]; int n = 0;
+  if (online) {
+    labels[n] = "Apagar PC";   pgActions[n] = PA_OFF;    n++;
+    labels[n] = "Modo Normal"; pgActions[n] = PA_NORMAL; n++;
+    labels[n] = "Modo Sim";    pgActions[n] = PA_SIM;    n++;
+    labels[n] = "Modo TV";     pgActions[n] = PA_TV;     n++;
+  } else {
+    labels[n] = "Prender PC";  pgActions[n] = PA_ON;     n++;
+  }
+  pgItemCount = n;
+  if (pgSel >= n) pgSel = 0;
+  for (int i = 0; i < n; i++) {
+    lv_obj_t *it = lv_label_create(pgMenuBox);
+    lv_obj_set_width(it, lv_pct(100));
+    lv_obj_set_style_text_font(it, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_pad_ver(it, 9, 0);
+    lv_obj_set_style_radius(it, 10, 0);
+    lv_obj_set_style_text_align(it, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(it, labels[i]);
+    pgItems[i] = it;
+  }
+  pgApplyHighlight();
+}
+
+static void pgEnterMenu() {
+  pgView = PG_MENU; pgSel = 0;
+  pgRenderMenu();
+  lv_scr_load_anim(pgMenuScr, LV_SCR_LOAD_ANIM_OVER_LEFT, 250, 0, false);
+}
+
+static void buildGamerMenu() {
+  lv_obj_t *s = newScreen();
+  pgMenuScr = s;
+
+  pgMenuTitle = mkLabel(s, &lv_font_montserrat_18, COL_ACCENT);
+  lv_obj_set_style_text_align(pgMenuTitle, LV_TEXT_ALIGN_CENTER, 0);
+  lv_label_set_text(pgMenuTitle, "PC GAMER");
+  lv_obj_align(pgMenuTitle, LV_ALIGN_TOP_MID, 0, 28);
+
+  pgMenuBox = lv_obj_create(s);
+  lv_obj_remove_style_all(pgMenuBox);
+  lv_obj_set_size(pgMenuBox, 280, 210);
+  lv_obj_align(pgMenuBox, LV_ALIGN_CENTER, 0, 6);
+  lv_obj_set_flex_flow(pgMenuBox, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(pgMenuBox, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_row(pgMenuBox, 8, 0);
+  lv_obj_clear_flag(pgMenuBox, LV_OBJ_FLAG_SCROLLABLE);
+
+  pgMenuHint = mkLabel(s, &lv_font_montserrat_12, COL_SUB);
+  lv_label_set_text(pgMenuHint, "girar: mover   push: ok   manten: atras");
+  lv_obj_align(pgMenuHint, LV_ALIGN_BOTTOM_MID, 0, -12);
 }
 
 static void buildGamerScreen() {
@@ -698,18 +779,17 @@ static void buildGamerScreen() {
 
   lv_obj_t *t = mkLabel(s, &lv_font_montserrat_18, COL_ACCENT);
   lv_label_set_text(t, "PC GAMER");
-  lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 30);
+  lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 40);
 
-  // ring + icono de poder (push = prender/apagar)
   lv_obj_t *ring = lv_obj_create(s);
-  lv_obj_set_size(ring, 80, 80);
+  lv_obj_set_size(ring, 110, 110);
   lv_obj_set_style_radius(ring, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_bg_color(ring, COL_CARD, 0);
   lv_obj_set_style_border_width(ring, 3, 0);
   lv_obj_set_style_border_color(ring, COL_ACCENT, 0);
   lv_obj_clear_flag(ring, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_align(ring, LV_ALIGN_CENTER, 0, -78);
-  pgIcon = mkLabel(ring, &lv_font_montserrat_28, COL_SUB);
+  lv_obj_align(ring, LV_ALIGN_CENTER, 0, -24);
+  pgIcon = mkLabel(ring, &lv_font_montserrat_48, COL_SUB);
   lv_label_set_text(pgIcon, LV_SYMBOL_POWER);
   lv_obj_center(pgIcon);
 
@@ -719,37 +799,18 @@ static void buildGamerScreen() {
   lv_obj_set_style_border_width(pgDot, 0, 0);
   lv_obj_set_style_bg_color(pgDot, COL_SUB, 0);
   lv_obj_clear_flag(pgDot, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_align(pgDot, LV_ALIGN_CENTER, -58, -18);
+  lv_obj_align(pgDot, LV_ALIGN_CENTER, -56, 56);
 
   pgStatus = mkLabel(s, &lv_font_montserrat_16, COL_TXT);
   lv_label_set_text(pgStatus, "Consultando...");
-  lv_obj_align(pgStatus, LV_ALIGN_CENTER, 6, -18);
-
-  // Modos: Normal / Sim / TV (tactiles, ocultos si la PC esta apagada)
-  const int BW = 78, BH = 46, GAP = 6;
-  int total = BW * 3 + GAP * 2;
-  int startX = -(total / 2) + BW / 2;
-  for (int i = 0; i < 3; i++) {
-    lv_obj_t *b = lv_btn_create(s);
-    lv_obj_set_size(b, BW, BH);
-    lv_obj_align(b, LV_ALIGN_CENTER, startX + i * (BW + GAP), 40);
-    lv_obj_set_style_radius(b, 14, 0);
-    lv_obj_set_style_bg_color(b, COL_CARD, 0);
-    lv_obj_set_style_shadow_width(b, 0, 0);
-    lv_obj_add_event_cb(b, pgModeCb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
-    lv_obj_t *l = mkLabel(b, &lv_font_montserrat_16, COL_TXT);
-    lv_label_set_text(l, PG_MODES[i]);
-    lv_obj_center(l);
-    pgModeBtn[i] = b; pgModeLbl[i] = l;
-    lv_obj_add_flag(b, LV_OBJ_FLAG_HIDDEN);   // arrancan ocultos (hasta saber online)
-  }
+  lv_obj_align(pgStatus, LV_ALIGN_CENTER, 8, 56);
 
   pgHint = mkLabel(s, &lv_font_montserrat_14, COL_SUB);
   lv_label_set_long_mode(pgHint, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(pgHint, 250);
   lv_obj_set_style_text_align(pgHint, LV_TEXT_ALIGN_CENTER, 0);
-  lv_label_set_text(pgHint, "push: prender");
-  lv_obj_align(pgHint, LV_ALIGN_BOTTOM_MID, 0, -28);
+  lv_label_set_text(pgHint, "push: opciones");
+  lv_obj_align(pgHint, LV_ALIGN_CENTER, 0, 96);
 
   buildDots(s, 6);
 }
@@ -762,6 +823,7 @@ void ui_build() {
   buildHueCover();
   buildHueFavs();
   buildHueMenuScreen();
+  buildGamerMenu();
   buildMarketsScreen();
   buildServerScreen();
   buildWallpaperScreen();
@@ -771,6 +833,16 @@ void ui_build() {
 
 // 🔄 Girar: dentro de Hue = mover en la lista; si no, cambiar de app
 void ui_nav(int dir) {
+  if (curApp == 6 && pgView == PG_MENU) {         // navegando el menu de PC Gamer
+    if (pgItemCount <= 0) return;
+    pgSel += dir;
+    if (pgSel < 0) pgSel = 0;
+    if (pgSel >= pgItemCount) pgSel = pgItemCount - 1;
+    pgConfirming = false;                          // moverse cancela la confirmacion
+    lv_label_set_text(pgMenuHint, "girar: mover   push: ok   manten: atras");
+    pgApplyHighlight();
+    return;
+  }
   if (curApp == 2 && hueView != HV_NONE) {        // navegando listas de Hue
     if (hueView == HV_FAVS) return;               // favoritos = táctil, el giro no aplica
     if (hueItemCount <= 0) return;
@@ -798,29 +870,48 @@ void ui_select() {
   if (curApp == 3) { markets_request(); return; }
   // --- App Servidor: push = refrescar ---
   if (curApp == 4) { server_request(); return; }
-  // --- App PC Gamer: push = prender (con confirmacion) ---
+  // --- App PC Gamer: cover -> menu -> activar opcion ---
   if (curApp == 6) {
-    bool online = pcOnlineNow();
-    if (pgView == PG_IDLE) {
-      if (online) {
-        pgView = PG_CONFIRM_OFF; pgT = millis();
-        lv_label_set_text(pgHint, "Apagar PC?  push otra vez = SI");
-      } else {
-        pgView = PG_CONFIRM; pgT = millis();
-        lv_label_set_text(pgHint, "Prender PC?  push otra vez = SI");
-      }
-    } else if (pgView == PG_CONFIRM) {
-      wol_send();
-      server_request();
-      pgView = PG_WAKING; pgT = millis(); pgLastReq = millis();
-      lv_label_set_text(pgHint, "Despertando... puede tardar 1-2 min en confirmar");
-    } else if (pgView == PG_CONFIRM_OFF) {
-      pc_shutdown_async();
-      server_request();
-      pgView = PG_OFFING; pgT = millis(); pgLastReq = millis();
-      lv_label_set_text(pgHint, "Apagando...");
+    if (pgView == PG_COVER) {            // cover: entrar al menu
+      pgEnterMenu();
+      return;
     }
-    // PG_WAKING / PG_OFFING: pushes ignorados (idempotente)
+    if (pgView == PG_MENU) {
+      if (pgItemCount <= 0) return;
+      PgAction a = pgActions[pgSel];
+      if (a == PA_NORMAL || a == PA_SIM || a == PA_TV) {   // modo: solo si PC lista
+        if (!pcReady()) {                                  // lockout de arranque
+          lv_label_set_text(pgMenuHint, "Arrancando PC, espera...");
+          pgInfoUntil = millis() + 2500;
+          return;
+        }
+        pc_profile_async(PG_PATHS[a - PA_NORMAL]);
+        lv_label_set_text(pgMenuHint, "Modo activado");
+        pgInfoUntil = millis() + 2500;
+        return;
+      }
+      // Prender / Apagar: pide confirmacion (2do push)
+      if (!pgConfirming) {
+        pgConfirming = true;
+        lv_label_set_text(pgMenuHint, (a == PA_ON) ? "Prender? push de nuevo"
+                                                   : "Apagar? push de nuevo");
+        return;
+      }
+      pgConfirming = false;
+      if (a == PA_ON) {
+        wol_send(); server_request();
+        pgBootT = millis();                  // arranca el lockout de perfiles
+        pgView = PG_WAKING; pgT = millis(); pgLastReq = millis();
+        lv_label_set_text(pgHint, "Despertando... 1-2 min");
+      } else {
+        pc_shutdown_async(); server_request();
+        pgView = PG_OFFING; pgT = millis(); pgLastReq = millis();
+        lv_label_set_text(pgHint, "Apagando...");
+      }
+      lv_scr_load_anim(ovScr[6], LV_SCR_LOAD_ANIM_OVER_RIGHT, 250, 0, false);  // al cover
+      return;
+    }
+    // PG_WAKING / PG_OFFING: pushes ignorados
     return;
   }
   // --- App Wallpaper: push = siguiente GIF ---
@@ -895,9 +986,10 @@ void ui_select() {
 
 // 👇⏳ Push largo: atrás / subir un nivel
 void ui_back() {
-  if (curApp == 6 && (pgView == PG_CONFIRM || pgView == PG_CONFIRM_OFF)) {  // cancelar
-    pgView = PG_IDLE;
-    lv_label_set_text(pgHint, "push: prender / apagar");
+  if (curApp == 6 && pgView == PG_MENU) {          // menu -> volver al cover
+    pgView = PG_COVER; pgConfirming = false;
+    lv_label_set_text(pgHint, "push: opciones");
+    lv_scr_load_anim(ovScr[6], LV_SCR_LOAD_ANIM_OVER_RIGHT, 250, 0, false);
     return;
   }
   if (curApp == 2 && hueView != HV_NONE) {
@@ -921,14 +1013,8 @@ void ui_back() {
 }
 
 void ui_tick() {
-  // PC Gamer: estado en tiempo real -> consulta directa al agente cada 3s
-  // SOLO mientras se ve la app 6 (no carga la red el resto del tiempo).
-  static uint32_t pcPollT = 0;
-  if (curApp == 6) {
-    if (millis() - pcPollT > 3000) { pcPollT = millis(); pc_status_poll(); }
-  } else {
-    g_pcDirectState = -1;   // fuera de la app: olvida el directo (usa health.json)
-  }
+  // PC Gamer: el task de estado solo consulta mientras se ve la app 6
+  pc_status_active(curApp == 6);
 
   // --- Reloj ---
   struct tm tm;
@@ -1090,10 +1176,12 @@ void ui_tick() {
     bool pcKnownH  = g_srv.valid && g_srv.pc_valid;
     bool pcOnlineH = pcKnownH && g_srv.pc_online;
     server_unlock();
-    // Prioriza la consulta directa al agente (tiempo real ~2s); fallback health.json
-    bool pcKnown  = (g_pcDirectState >= 0) || pcKnownH;
-    bool pcOnline = (g_pcDirectState >= 0) ? (g_pcDirectState == 1) : pcOnlineH;
+    // Prioriza la consulta directa al agente; si es desconocido, fallback health.json
+    int dstate = pc_direct_state();
+    bool pcKnown  = (dstate >= 0) || pcKnownH;
+    bool pcOnline = (dstate >= 0) ? (dstate == 1) : pcOnlineH;
 
+    // Estado en el cover
     if (pcKnown) {
       lv_obj_set_style_bg_color(pgDot, pcOnline ? COL_OK : COL_SUB, 0);
       lv_label_set_text(pgStatus, pcOnline ? "Encendida" : "Apagada");
@@ -1102,55 +1190,53 @@ void ui_tick() {
       lv_label_set_text(pgStatus, "Consultando...");
     }
 
-    // Modos Normal/Sim/TV: visibles solo con la PC encendida (sin parpadeo)
-    int wantModes = (pcKnown && pcOnline) ? 1 : 0;
-    if (pgModesShown != wantModes) {
-      pgModesShown = wantModes;
-      for (int i = 0; i < 3; i++) {
-        if (wantModes) lv_obj_clear_flag(pgModeBtn[i], LV_OBJ_FLAG_HIDDEN);
-        else           lv_obj_add_flag(pgModeBtn[i], LV_OBJ_FLAG_HIDDEN);
+    // En el menu: reconstruir si el online cambio; re-pintar si el "ready" cambio
+    if (pgView == PG_MENU) {
+      if (pcKnown && pgMenuOnline != (pcOnline ? 1 : 0)) { pgRenderMenu(); pgReadyShown = -1; }
+      int r = pcReady() ? 1 : 0;
+      if (pgReadyShown != r) {
+        pgReadyShown = r;
+        pgApplyHighlight();                 // desbloquea/bloquea los perfiles
+        if (!pgInfoUntil) lv_label_set_text(pgMenuHint,
+            r ? "girar: mover   push: ok   manten: atras" : "Arrancando PC...");
       }
     }
 
-    if ((pgView == PG_CONFIRM || pgView == PG_CONFIRM_OFF) && millis() - pgT > 10000) {
-      pgView = PG_IDLE;
-      lv_label_set_text(pgHint, "push: prender / apagar");
-    }
     if (pgView == PG_WAKING) {
       if (pcOnline) {
-        pgView = PG_IDLE;
+        pgView = PG_COVER;
         lv_label_set_text(pgHint, "Encendida! A jugar :)");
         pgInfoUntil = millis() + 6000;
       } else if (millis() - pgT > 180000) {
-        pgView = PG_IDLE;
+        pgView = PG_COVER;
         lv_label_set_text(pgHint, "No confirmo en 3 min - revisa la PC");
         pgInfoUntil = millis() + 8000;
       } else if (millis() - pgLastReq > 15000) {
-        pgLastReq = millis();
-        server_request();                       // re-checa el estado mas seguido
+        pgLastReq = millis(); server_request();
       }
     }
     if (pgView == PG_OFFING) {
       if (g_pcShutdownResult == -1) {
-        pgView = PG_IDLE;
+        pgView = PG_COVER;
         lv_label_set_text(pgHint, "No pude apagarla (agente instalado?)");
         pgInfoUntil = millis() + 8000;
       } else if (!pcOnline) {
-        pgView = PG_IDLE;
+        pgView = PG_COVER;
         lv_label_set_text(pgHint, "Apagada. Buenas noches, gamer");
         pgInfoUntil = millis() + 6000;
       } else if (millis() - pgT > 120000) {
-        pgView = PG_IDLE;
+        pgView = PG_COVER;
         lv_label_set_text(pgHint, "Sigue encendida - revisa la PC");
         pgInfoUntil = millis() + 8000;
       } else if (millis() - pgLastReq > 15000) {
-        pgLastReq = millis();
-        server_request();
+        pgLastReq = millis(); server_request();
       }
     }
-    if (pgView == PG_IDLE && pgInfoUntil && millis() > pgInfoUntil) {
+    // Restaurar hints tras un mensaje temporal
+    if (pgInfoUntil && millis() > pgInfoUntil) {
       pgInfoUntil = 0;
-      lv_label_set_text(pgHint, "push: prender / apagar");
+      if (pgView == PG_MENU) lv_label_set_text(pgMenuHint, "girar: mover   push: ok   manten: atras");
+      else                   lv_label_set_text(pgHint, "push: opciones");
     }
     return;
   }
