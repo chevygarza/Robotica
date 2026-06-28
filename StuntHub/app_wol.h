@@ -13,6 +13,7 @@ void pc_shutdown_async();
 // "tv"). El agente (SYSTEM) dispara una tarea programada que corre en la sesion
 // del usuario. path debe ser un literal estatico (lo usa un task aparte).
 void pc_profile_async(const char *path);
+extern volatile int g_pcProfileResult;   // 0=idle, 1=en curso, 2=ok, -1=fallo
 
 // Estado DIRECTO de la PC (un task persistente consulta /status). Mas fresco
 // que el health.json del Mac Mini (hasta 60s). pc_status_begin() en setup;

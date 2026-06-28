@@ -25,6 +25,7 @@ extern "C" {
 #define COL_WARM   lv_color_hex(0xFFB454)
 #define COL_X      lv_color_hex(0x1D9BF0)
 #define COL_OK     lv_color_hex(0x3DD68C)
+#define COL_BAD    lv_color_hex(0xFF5B6E)
 
 #define NUM_APPS 7   // 0=clima, 1=X, 2=Luces, 3=Mercados, 4=Servidor, 5=Wallpaper, 6=PC Gamer
 
@@ -382,9 +383,11 @@ static void buildHueMenuScreen() {
   lv_obj_set_scroll_dir(hueBox, LV_DIR_VER);
   lv_obj_set_scrollbar_mode(hueBox, LV_SCROLLBAR_MODE_OFF);
 
+  // Sin hint en la curva inferior (ilegible en pantalla redonda): los gestos
+  // perilla/push/manten son convencion global del CROWN. Ver design system.
   hueHint = mkLabel(s, &lv_font_montserrat_12, COL_SUB);
-  lv_label_set_text(hueHint, "girar: mover   push: ok   manten: atras");
-  lv_obj_align(hueHint, LV_ALIGN_BOTTOM_MID, 0, -12);
+  lv_label_set_text(hueHint, "");
+  lv_obj_align(hueHint, LV_ALIGN_TOP_MID, 0, 40);
 }
 
 static void hueApplyHighlight() {
@@ -701,6 +704,7 @@ static void buildWallpaperScreen() {
 // manten = atras. Modos (Normal/Sim/TV) solo cuando la PC esta encendida.
 static int pgMenuOnline = -1;             // estado con que se construyo el menu
 static int pgReadyShown = -1;             // ultimo "ready" pintado en el menu
+static int pgProfileItem = -1;            // item de perfil esperando confirmacion
 
 static void pgApplyHighlight() {
   bool ready = pcReady();
@@ -761,16 +765,17 @@ static void buildGamerMenu() {
 
   pgMenuBox = lv_obj_create(s);
   lv_obj_remove_style_all(pgMenuBox);
-  lv_obj_set_size(pgMenuBox, 280, 210);
-  lv_obj_align(pgMenuBox, LV_ALIGN_CENTER, 0, 6);
+  lv_obj_set_size(pgMenuBox, 280, 190);
+  lv_obj_align(pgMenuBox, LV_ALIGN_CENTER, 0, 20);
   lv_obj_set_flex_flow(pgMenuBox, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(pgMenuBox, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_row(pgMenuBox, 8, 0);
   lv_obj_clear_flag(pgMenuBox, LV_OBJ_FLAG_SCROLLABLE);
 
-  pgMenuHint = mkLabel(s, &lv_font_montserrat_12, COL_SUB);
-  lv_label_set_text(pgMenuHint, "girar: mover   push: ok   manten: atras");
-  lv_obj_align(pgMenuHint, LV_ALIGN_BOTTOM_MID, 0, -12);
+  // Feedback/estado: debajo del titulo (zona visible del circulo), vacio en reposo.
+  pgMenuHint = mkLabel(s, &lv_font_montserrat_14, COL_SUB);
+  lv_label_set_text(pgMenuHint, "");
+  lv_obj_align(pgMenuHint, LV_ALIGN_TOP_MID, 0, 52);
 }
 
 static void buildGamerScreen() {
@@ -839,7 +844,7 @@ void ui_nav(int dir) {
     if (pgSel < 0) pgSel = 0;
     if (pgSel >= pgItemCount) pgSel = pgItemCount - 1;
     pgConfirming = false;                          // moverse cancela la confirmacion
-    lv_label_set_text(pgMenuHint, "girar: mover   push: ok   manten: atras");
+    lv_label_set_text(pgMenuHint, "");
     pgApplyHighlight();
     return;
   }
@@ -886,8 +891,10 @@ void ui_select() {
           return;
         }
         pc_profile_async(PG_PATHS[a - PA_NORMAL]);
-        lv_label_set_text(pgMenuHint, "Modo activado");
-        pgInfoUntil = millis() + 2500;
+        pgProfileItem = pgSel;                             // item en curso (espera resultado)
+        lv_obj_set_style_bg_opa(pgItems[pgSel], LV_OPA_TRANSP, 0);
+        lv_obj_set_style_text_color(pgItems[pgSel], COL_WARM, 0);
+        lv_label_set_text(pgMenuHint, "Enviando...");
         return;
       }
       // Prender / Apagar: pide confirmacion (2do push)
@@ -1190,15 +1197,28 @@ void ui_tick() {
       lv_label_set_text(pgStatus, "Consultando...");
     }
 
-    // En el menu: reconstruir si el online cambio; re-pintar si el "ready" cambio
+    // En el menu: confirmacion del perfil (item verde si llego, rojo si no)
+    if (pgView == PG_MENU && pgProfileItem >= 0 && pgProfileItem < pgItemCount) {
+      if (g_pcProfileResult == 2) {                       // POST respondio OK
+        lv_obj_set_style_text_color(pgItems[pgProfileItem], COL_OK, 0);
+        lv_label_set_text(pgMenuHint, LV_SYMBOL_OK " Listo");
+        lv_obj_set_style_text_color(pgMenuHint, COL_OK, 0);
+        pgProfileItem = -1; pgInfoUntil = millis() + 1800;
+      } else if (g_pcProfileResult == -1) {               // no respondio
+        lv_obj_set_style_text_color(pgItems[pgProfileItem], COL_BAD, 0);
+        lv_label_set_text(pgMenuHint, "No respondio");
+        lv_obj_set_style_text_color(pgMenuHint, COL_BAD, 0);
+        pgProfileItem = -1; pgInfoUntil = millis() + 2500;
+      }
+    }
+    // reconstruir si el online cambio; re-pintar si el "ready" cambio
     if (pgView == PG_MENU) {
       if (pcKnown && pgMenuOnline != (pcOnline ? 1 : 0)) { pgRenderMenu(); pgReadyShown = -1; }
       int r = pcReady() ? 1 : 0;
       if (pgReadyShown != r) {
         pgReadyShown = r;
         pgApplyHighlight();                 // desbloquea/bloquea los perfiles
-        if (!pgInfoUntil) lv_label_set_text(pgMenuHint,
-            r ? "girar: mover   push: ok   manten: atras" : "Arrancando PC...");
+        if (!pgInfoUntil) lv_label_set_text(pgMenuHint, r ? "" : "Arrancando PC...");
       }
     }
 
@@ -1235,7 +1255,11 @@ void ui_tick() {
     // Restaurar hints tras un mensaje temporal
     if (pgInfoUntil && millis() > pgInfoUntil) {
       pgInfoUntil = 0;
-      if (pgView == PG_MENU) lv_label_set_text(pgMenuHint, "girar: mover   push: ok   manten: atras");
+      if (pgView == PG_MENU) {
+        lv_label_set_text(pgMenuHint, "");
+        lv_obj_set_style_text_color(pgMenuHint, COL_SUB, 0);
+        pgApplyHighlight();                   // restaura el color normal de los items
+      }
       else                   lv_label_set_text(pgHint, "push: opciones");
     }
     return;

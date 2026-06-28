@@ -63,6 +63,7 @@ void pc_shutdown_async() {
 }
 
 // ---- Perfil (Normal/Sim/TV): POST /<path> al pc_agent, en task propio ----
+volatile int g_pcProfileResult = 0;   // 0=idle, 1=en curso, 2=ok, -1=fallo
 static void profileTask(void *pv) {
   const char *path = (const char *)pv;     // literal estatico (normal|sim|tv)
   WiFiClient client; HTTPClient http;
@@ -76,11 +77,13 @@ static void profileTask(void *pv) {
     code = http.sendRequest("POST", "{}");   // HTTP.sys exige cuerpo (411 si no)
     http.end();
   }
+  g_pcProfileResult = (code == 200) ? 2 : -1;   // 2=ok, -1=no respondio
   Serial.printf("[wol] profile %s -> %d\n", path, code);
   vTaskDelete(NULL);
 }
 
 void pc_profile_async(const char *path) {
+  g_pcProfileResult = 1;                         // en curso
   xTaskCreatePinnedToCore(profileTask, "pcprof", 6144, (void *)path, 1, nullptr, 0);
 }
 
