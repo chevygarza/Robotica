@@ -19,7 +19,7 @@
 
 // Etapa 3: en 1 el DFPlayer entra en juego. Sin el modulo conectado la UI
 // funciona completa, solo sin sonido.
-#define STAGE3_AUDIO 0
+#define STAGE3_AUDIO 1
 
 // Prueba automatica: inyecta la secuencia completa de gestos para validar las
 // transiciones sin manos. Se deja en 0 para uso normal.

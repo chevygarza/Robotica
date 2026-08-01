@@ -57,22 +57,28 @@ bool player_begin() {
   dfSerial.begin(9600, SERIAL_8N1, PIN_DF_RX, PIN_DF_TX);
   delay(100);
 
-  // El DFPlayer tarda en arrancar tras energizarse; dos intentos con margen.
-  for (uint8_t attempt = 0; attempt < 2 && !ready; attempt++) {
-    if (df.begin(dfSerial, /*isACK=*/true, /*doReset=*/true)) ready = true;
-    else delay(600);
-  }
+  // isACK = false NO ES NEGOCIABLE con este modulo. Verificado en placa el
+  // 2026-07-31: con isACK=true la libreria se queda dentro de sendStack() en
+  //     while (_isSending) { delay(0); available(); }
+  // esperando la confirmacion de cada comando, y este clon MH2024K confirma
+  // unos si y otros no. El sketch se cuelga en seco, sin timeout que lo salve.
+  //
+  // No perdemos nada que importe: los avisos utiles ("termino la pista", que es
+  // lo que dispara el avance del album) el modulo los manda por su cuenta, sin
+  // que nadie se los pida, y se leen igual en player_tick().
+  df.begin(dfSerial, /*isACK=*/false, /*doReset=*/true);
+  delay(500);
+  ready = true;
 
-  if (!ready) {
-    Serial.println("DFPlayer: sin respuesta (revisa VCC, el 1k en TX->RX y la SD)");
-    return false;
-  }
-
+  // Sin ACK no hay forma de preguntarle nada, asi que tampoco tiene caso pedir
+  // readFileCounts(): devolveria -1 y solo confundiria al depurar.
   df.volume(volume);
+  delay(PLAYER_MIN_GAP_MS);
   df.EQ(DFPLAYER_EQ_NORMAL);
+  delay(PLAYER_MIN_GAP_MS);
   df.outputDevice(DFPLAYER_DEVICE_SD);
   lastSentMs = millis();
-  Serial.printf("DFPlayer: listo, %d archivos en la SD\n", df.readFileCounts());
+  Serial.println("DFPlayer: iniciado (sin ACK, a proposito)");
   return true;
 }
 

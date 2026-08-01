@@ -92,6 +92,10 @@ void update() {
     } else {
       awaiting = false;                 // el largo ya se atendio
     }
+#if KNOB_DEBUG_HOLD
+    if (!pressed) Serial.printf("[perilla] sostenido %lu ms\n",
+                                (unsigned long)(t - downMs));
+#endif
   }
 
   // Cierra la ventana: si nadie mas presiono, era un push corto.
@@ -104,6 +108,10 @@ void update() {
   if (pressed && !longFired && (t - downMs) >= KNOB_LONG_PRESS_MS) {
     longFired = true;
     awaiting = false;
+#if KNOB_DEBUG_HOLD
+    Serial.printf("[perilla] LARGO disparado a los %lu ms\n",
+                  (unsigned long)(t - downMs));
+#endif
     push(KNOB_LONG_PRESS);
   }
 }

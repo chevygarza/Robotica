@@ -22,7 +22,13 @@ enum KnobEvent : uint8_t {
 // sale invertido, pon esto en 1.
 #define KNOB_INVERT             0
 
-#define KNOB_LONG_PRESS_MS   3000
+// 3 segundos se siente roto: la gente sostiene ~1s, no ve nada, suelta, y el
+// gesto se lee como push corto. 900ms es el rango donde un mantener se percibe
+// deliberado sin volverse una espera.
+#define KNOB_LONG_PRESS_MS    900
+
+// Imprime por serial cuanto duro cada pulsacion. Solo para depurar.
+#define KNOB_DEBUG_HOLD          1
 #define KNOB_DEBOUNCE_MS       25
 
 // Ventana para distinguir push corto de doble. El precio de tener doble push es

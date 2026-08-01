@@ -60,6 +60,15 @@ void setup() {
 
   knob::begin();
 
+  // LO PRIMERO Y LO MAS IMPORTANTE: encender el riel de 5V de los conectores.
+  // El pin 3 del conector UART cuelga de un PMOS (Q4) gobernado por GPIO2. Si
+  // esto no se enciende, el modulo no recibe alimentacion, no arranca, no
+  // contesta — y el pin de 5V flota dando lecturas que parecen cable roto.
+  pinMode(PIN_PERIPH_5V_EN, OUTPUT);
+  digitalWrite(PIN_PERIPH_5V_EN, HIGH);
+  Serial.println("riel de 5V de los conectores: ENCENDIDO (GPIO2)");
+  delay(300);   // que el riel suba antes de hablarle al modulo
+
   dfSerial.begin(9600, SERIAL_8N1, PIN_DF_RX, PIN_DF_TX);
 
   // Los clones MH2024K tardan en despertar tras energizarse. Con 100ms el

@@ -16,11 +16,21 @@
 #define PIN_LCD_RST      14
 #define PIN_LCD_BL       46   // backlight por PWM (ledc) -> fade de auto-apagado
 
-// CRITICO y no documentado en el wiki: la pantalla no recibe corriente hasta
-// que estos dos pines estan en HIGH al mismo tiempo. Sin esto queda negra por
-// mas que el SPI este perfecto.
-#define PIN_LCD_PWR_A     1
-#define PIN_LCD_PWR_B     2
+// CRITICO y no documentado en el wiki. Verificado en el esquematico oficial
+// (Eagle_SCH&PCB/ESP32 Display-1.46-V1.0.pdf, bloque POWER):
+//
+//   GPIO2 -> R23 10k -> Q7 (S9013) -> compuerta de Q4 (PMOS-3401-4A) -> OUT_5V
+//
+// GPIO2 NO es "corriente de la pantalla" como dice el comentario del ejemplo de
+// Elecrow: es el interruptor del riel de 5V que alimenta el pin 3 de los
+// conectores UART e I2C. Sin ponerlo en HIGH, cualquier periferico colgado de
+// esos conectores se queda sin alimentacion — y el sintoma es cruel, porque el
+// pin flota y da lecturas que parecen cable roto.
+//
+// Cualquier sketch que hable con el DFPlayer TIENE que encender esto, aunque no
+// use la pantalla para nada.
+#define PIN_PERIPH_5V_EN  2   // 5V de los conectores UART / I2C
+#define PIN_LCD_PWR       1   // corriente del panel
 
 // ── Touch capacitivo CST816T ───────────────────────────────────────────────
 // Bus I2C 0 (Wire) remapeado a 6/7. El header de expansion tiene su PROPIO bus

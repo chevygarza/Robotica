@@ -110,10 +110,10 @@ bool display_begin() {
   // 1) Corriente del panel. Sin estos dos pines en HIGH la pantalla queda
   //    negra aunque el SPI funcione. No aparece en el wiki, solo en el codigo
   //    de fabrica de Elecrow.
-  pinMode(PIN_LCD_PWR_A, OUTPUT);
-  digitalWrite(PIN_LCD_PWR_A, HIGH);
-  pinMode(PIN_LCD_PWR_B, OUTPUT);
-  digitalWrite(PIN_LCD_PWR_B, HIGH);
+  pinMode(PIN_LCD_PWR, OUTPUT);
+  digitalWrite(PIN_LCD_PWR, HIGH);
+  pinMode(PIN_PERIPH_5V_EN, OUTPUT);
+  digitalWrite(PIN_PERIPH_5V_EN, HIGH);
 
   // 2) Pulso de reset a mano antes de init: el VDD sube en alto al arrancar y
   //    el panel necesita el ciclo para quedar en un estado conocido.
