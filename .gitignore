@@ -1,0 +1,5 @@
+build/
+*.bin.tmp
+sd/src/*
+sd/src_test/*
+!sd/src/.gitkeep
