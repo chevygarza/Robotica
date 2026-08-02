@@ -16,6 +16,8 @@
 #include "display.h"
 #include "player.h"
 #include "app.h"
+#include "netclock.h"
+#include "alarm.h"
 
 // Etapa 3: en 1 el DFPlayer entra en juego. Sin el modulo conectado la UI
 // funciona completa, solo sin sonido.
@@ -60,6 +62,7 @@ void setup() {
   digitalWrite(PIN_POWER_LED, LOW);    // el LED de power es activo en LOW
 
   knob::begin();
+  alarm_begin();
 
   Serial.println();
   Serial.println("VNL-1  etapa 4 — maquina de estados");
@@ -82,6 +85,10 @@ void setup() {
   else Serial.println("sigo sin audio: la pantalla y la perilla van igual");
 #endif
 
+  // El WiFi arranca despues de la UI: asi la pantalla ya esta viva mientras la
+  // red negocia, en vez de dejar el aparato en negro esperando a un router.
+  clock_begin();
+
   // Primer render completo antes de encender la luz: el fade revela la UI ya
   // dibujada en vez de mostrar el barrido de LVGL.
   lv_timer_handler();
@@ -101,7 +108,7 @@ void loop() {
 
     static const char* NAMES[] = { "-", "CW", "CCW", "PRESS", "DOBLE", "LONG",
                                    "DOWN" };
-    static const char* STATES[] = { "SELECTOR", "TOCANDO" };
+    static const char* STATES[] = { "SELECTOR", "TOCANDO", "ALARMA" };
     if (e != KNOB_DOWN) {
       Serial.printf("%-6s -> %s\n", NAMES[e], STATES[app_state()]);
     }

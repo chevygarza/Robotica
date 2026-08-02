@@ -12,22 +12,18 @@
 // giro y se mantiene suave.
 #define VINYL_RPM  22.0f
 
-#define SHEEN_SPAN  54   // ancho angular del highlight, en grados
-#define SHEEN_STEP  38   // cuanto se corre por muesca de la perilla
-
 static lv_obj_t*   disc   = nullptr;   // canvas con disco + surcos (estatico)
-static lv_obj_t*   sheen  = nullptr;   // arco de luz
 static lv_obj_t*   label  = nullptr;   // canvas de la etiqueta (rota)
-static lv_color_t* discBuf  = nullptr;
+static uint8_t*    discBuf  = nullptr;
 static uint8_t*    labelBuf = nullptr;
 
 static uint8_t  curAlbum   = 0;
 static bool     spinWanted = false;
 static float    rpmCur     = 0.0f;     // inercia: el disco no arranca ni para en seco
 static float    angle      = 0.0f;     // grados
-static float    sheenCur   = 300.0f;   // luz entrando por arriba-izquierda
-static float    sheenTgt   = 300.0f;
 static uint32_t lastMs     = 0;
+static uint16_t baseZoom   = 256;      // 256 = 100%
+static uint16_t bumpZoom   = 256;
 static int16_t  lastSent   = -1;       // ultimo angulo enviado a LVGL, en 0.1 grados
 
 // En LVGL 8.3 el gradiente de un draw_dsc va en bg_grad (con stops), no en los
@@ -46,7 +42,7 @@ static void setGrad(lv_draw_rect_dsc_t& d, lv_color_t from, lv_color_t to) {
 // Los surcos son circulos concentricos, y un circulo se ve identico girado. Por
 // eso nada de esto se redibuja por frame: solo la etiqueta rota.
 static void drawDisc() {
-  lv_canvas_fill_bg(disc, lv_color_black(), LV_OPA_COVER);
+  lv_canvas_fill_bg(disc, lv_color_black(), LV_OPA_TRANSP);
 
   lv_draw_rect_dsc_t body;
   lv_draw_rect_dsc_init(&body);
@@ -65,23 +61,28 @@ static void drawDisc() {
   g.color = lv_color_white();
   g.width = 1;
 
-  // Surcos desde el filo de la etiqueta hasta casi el borde: mas apretados y
-  // tenues hacia afuera, como un vinilo real.
-  for (lv_coord_t r = LABEL_D / 2 + 3; r < c - 3; r += 3) {
-    float k = (float)(r - LABEL_D / 2) / (float)(c - LABEL_D / 2);
-    g.opa = (lv_opa_t)(34 - 16 * k);
+  // Un vinilo tiene tres zonas: borde liso por donde entra la aguja, la zona
+  // grabada con los surcos, y otra banda lisa antes de la etiqueta. Los surcos
+  // van finos y parejos; el disco real no tiene brillos ni manchas.
+  const lv_coord_t rOut = c - 15;
+  const lv_coord_t rIn  = LABEL_D / 2 + 11;
+  for (lv_coord_t r = rIn; r <= rOut; r += 2) {
+    float k = (float)(r - rIn) / (float)(rOut - rIn);
+    g.opa = (lv_opa_t)(24 - 10 * k);
     lv_canvas_draw_arc(disc, c, c, r, 0, 360, &g);
   }
 
-  // Canto del disco: un aro claro afuera y una sombra apenas adentro. Es lo que
-  // le da volumen y marca donde termina el vinilo.
-  g.opa   = 90;
-  g.width = 2;
+  // Canto: filo claro afuera y sombra apenas adentro, para darle grosor.
+  g.opa = 95; g.width = 2;
   lv_canvas_draw_arc(disc, c, c, c - 2, 0, 360, &g);
-  g.color = lv_color_black();
-  g.opa   = 70;
-  g.width = 3;
-  lv_canvas_draw_arc(disc, c, c, c - 6, 0, 360, &g);
+  g.color = lv_color_black(); g.opa = 80; g.width = 3;
+  lv_canvas_draw_arc(disc, c, c, c - 7, 0, 360, &g);
+
+  // Surco de salida: el aro marcado que rodea la etiqueta en cualquier disco.
+  g.color = lv_color_white(); g.opa = 55; g.width = 1;
+  lv_canvas_draw_arc(disc, c, c, LABEL_D / 2 + 6, 0, 360, &g);
+  g.opa = 30;
+  lv_canvas_draw_arc(disc, c, c, LABEL_D / 2 + 4, 0, 360, &g);
 }
 
 // ── Etiqueta: se redibuja al cambiar de album ────────────────────────────────
@@ -104,8 +105,11 @@ static void drawCover(const uint16_t* cover) {
   }
 }
 
-static void drawLabel(uint8_t idx) {
-  const Album& a = ALBUMS[idx];
+// El dibujo de la etiqueta no necesita saber de albumes: solo texto y color.
+static void drawLabelRaw(const char* name, const char* sub, uint32_t color,
+                         const uint16_t* cover) {
+  struct { const char* name; const char* subtitle; uint32_t color;
+           const uint16_t* cover; } a = { name, sub, color, cover };
 
   lv_canvas_fill_bg(label, lv_color_black(), LV_OPA_TRANSP);
 
@@ -167,13 +171,18 @@ static void drawLabel(uint8_t idx) {
   lv_canvas_draw_rect(label, c - HOLE_R, c - HOLE_R, HOLE_R * 2, HOLE_R * 2, &hole);
 }
 
+static void drawLabel(uint8_t idx);   // definida mas abajo
+
 bool vinyl_create(lv_obj_t* parent) {
   lv_obj_set_style_bg_color(parent, lv_color_black(), 0);
   lv_obj_set_style_bg_opa(parent, LV_OPA_COVER, 0);
 
   // El canvas del disco vive en PSRAM: son 226KB y se escribe una sola vez.
-  discBuf = (lv_color_t*)heap_caps_malloc(
-      LV_CANVAS_BUF_SIZE_TRUE_COLOR(DISC_D, DISC_D), MALLOC_CAP_SPIRAM);
+  // Con alfa, no en color plano: el lienzo es cuadrado y el disco redondo, asi
+  // que las esquinas TIENEN que ser transparentes o se ve el recuadro encima
+  // del fondo en cuanto la camara se aleja.
+  discBuf = (uint8_t*)heap_caps_malloc(
+      LV_CANVAS_BUF_SIZE_TRUE_COLOR_ALPHA(DISC_D, DISC_D), MALLOC_CAP_SPIRAM);
   // La etiqueta va en RAM interna: LVGL la lee pixel por pixel en cada
   // rotacion, y desde PSRAM eso cuesta el doble.
   labelBuf = (uint8_t*)heap_caps_malloc(
@@ -184,31 +193,16 @@ bool vinyl_create(lv_obj_t* parent) {
   }
 
   disc = lv_canvas_create(parent);
-  lv_canvas_set_buffer(disc, discBuf, DISC_D, DISC_D, LV_IMG_CF_TRUE_COLOR);
+  lv_canvas_set_buffer(disc, discBuf, DISC_D, DISC_D, LV_IMG_CF_TRUE_COLOR_ALPHA);
   lv_obj_center(disc);
   drawDisc();
 
-  // Highlight especular. Es un arco ancho a muy baja opacidad: se lee como luz
-  // resbalando sobre los surcos. Se queda quieto mientras el disco gira (como
-  // pasa de verdad con una lampara fija) y se corre al navegar con la perilla.
-  sheen = lv_arc_create(parent);
-  lv_obj_set_size(sheen, DISC_D - 8, DISC_D - 8);
-  lv_obj_center(sheen);
-  lv_obj_remove_style(sheen, NULL, LV_PART_KNOB);
-  lv_obj_clear_flag(sheen, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_set_style_bg_opa(sheen, LV_OPA_TRANSP, LV_PART_MAIN);
-  lv_obj_set_style_border_opa(sheen, LV_OPA_TRANSP, LV_PART_MAIN);
-  lv_obj_set_style_arc_opa(sheen, LV_OPA_TRANSP, LV_PART_MAIN);
-  lv_obj_set_style_arc_color(sheen, lv_color_white(), LV_PART_INDICATOR);
-  lv_obj_set_style_arc_opa(sheen, 18, LV_PART_INDICATOR);
-  lv_obj_set_style_arc_width(sheen, (DISC_D - LABEL_D) / 2, LV_PART_INDICATOR);
-  lv_arc_set_bg_angles(sheen, 0, 360);
-  lv_arc_set_angles(sheen, (uint16_t)sheenCur, (uint16_t)sheenCur + SHEEN_SPAN);
 
   label = lv_canvas_create(parent);
   lv_canvas_set_buffer(label, labelBuf, LABEL_D, LABEL_D, LV_IMG_CF_TRUE_COLOR_ALPHA);
   lv_obj_center(label);
   lv_img_set_pivot(label, LABEL_D / 2, LABEL_D / 2);
+  lv_img_set_pivot(disc, DISC_D / 2, DISC_D / 2);
   lv_img_set_antialias(label, true);
   drawLabel(curAlbum);
 
@@ -230,6 +224,18 @@ static void fadeInLabel() {
   lv_anim_start(&a);
 }
 
+static void drawLabel(uint8_t idx) {
+  const Album& a = ALBUMS[idx];
+  drawLabelRaw(a.name, a.subtitle, a.color, a.cover);
+}
+
+void vinyl_set_custom(const char* name, const char* sub, uint32_t color,
+                      bool animate) {
+  drawLabelRaw(name, sub, color, nullptr);
+  lv_obj_invalidate(label);
+  if (animate) fadeInLabel();
+}
+
 void vinyl_set_album(uint8_t idx, bool animate) {
   if (idx >= ALBUM_COUNT) return;
   curAlbum = idx;
@@ -238,21 +244,40 @@ void vinyl_set_album(uint8_t idx, bool animate) {
   if (animate) fadeInLabel();
 }
 
-void vinyl_nudge_sheen(int8_t dir) {
-  sheenTgt += (dir >= 0 ? SHEEN_STEP : -SHEEN_STEP);
-  while (sheenTgt < 0)    sheenTgt += 360.0f;
-  while (sheenTgt >= 360) sheenTgt -= 360.0f;
-  // Camino mas corto: sin esto, ir de 350 a 10 grados barre 340 grados.
-  if (sheenCur - sheenTgt >  180.0f) sheenTgt += 360.0f;
-  if (sheenTgt - sheenCur >  180.0f) sheenTgt -= 360.0f;
-}
-
 void vinyl_set_spinning(bool on) {
   spinWanted = on;
 }
 
 bool vinyl_spinning() { return spinWanted; }
 bool vinyl_moving()   { return rpmCur > 0.15f; }
+
+// Escala el conjunto disco + luz + etiqueta. Es lo que separa visualmente
+// "estoy dentro de un disco" de "estoy hojeando la biblioteca": en el selector
+// la camara se aleja y caben los vecinos; al reproducir se acerca y el vinilo
+// llena el cuadro, solo.
+static void applyZoom() {
+  if (!disc) return;
+  lv_img_set_zoom(disc, baseZoom);
+  lv_img_set_zoom(label, (uint16_t)((uint32_t)baseZoom * bumpZoom / 256));
+}
+
+void vinyl_zoom_to(uint8_t pct, uint16_t ms) {
+  uint16_t tgt = (uint16_t)(256UL * pct / 100);
+  lv_anim_del(&baseZoom, nullptr);
+  lv_anim_t a;
+  lv_anim_init(&a);
+  lv_anim_set_var(&a, &baseZoom);
+  lv_anim_set_values(&a, baseZoom, tgt);
+  lv_anim_set_time(&a, ms);
+  lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+  lv_anim_set_exec_cb(&a, [](void* v, int32_t val) {
+    baseZoom = (uint16_t)val;
+    applyZoom();
+  });
+  lv_anim_start(&a);
+}
+
+uint8_t vinyl_zoom() { return (uint8_t)(baseZoom * 100UL / 256); }
 
 void vinyl_bump() {
   lv_anim_t a;
@@ -263,7 +288,8 @@ void vinyl_bump() {
   lv_anim_set_playback_time(&a, 90);
   lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
   lv_anim_set_exec_cb(&a, [](void* obj, int32_t v) {
-    lv_img_set_zoom((lv_obj_t*)obj, (uint16_t)v);
+    bumpZoom = (uint16_t)v;
+    applyZoom();
   });
   lv_anim_start(&a);
 }
@@ -290,12 +316,4 @@ void vinyl_tick() {
     }
   }
 
-  // Suavizado exponencial: da easing sin manejar animaciones a mano.
-  if (fabsf(sheenTgt - sheenCur) > 0.4f) {
-    sheenCur += (sheenTgt - sheenCur) * 0.18f;
-    float a = sheenCur;
-    while (a < 0)    a += 360.0f;
-    while (a >= 360) a -= 360.0f;
-    lv_arc_set_angles(sheen, (uint16_t)a, (uint16_t)a + SHEEN_SPAN);
-  }
 }

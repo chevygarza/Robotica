@@ -50,6 +50,22 @@ FQBN = ("esp32:esp32:esp32s3:PSRAM=opi,FlashSize=16M,"
 
 
 # ── Utilidades ───────────────────────────────────────────────────────────────
+def es_util(p: Path) -> bool:
+    """macOS crea gemelos '._archivo.mp3' al copiar a FAT32. Terminan en .mp3
+    pero no son audio: si se cuelan, ffmpeg truena y ademas se duplicarian las
+    pistas. Se filtran ANTES de listar, no despues."""
+    return not p.name.startswith(".")
+
+
+def limpiar_basura(root: Path) -> int:
+    n = 0
+    for p in sorted(root.rglob("*"), key=lambda x: -len(x.parts)):
+        if p.name in JUNK or p.name.startswith("._"):
+            shutil.rmtree(p, ignore_errors=True) if p.is_dir() else p.unlink(missing_ok=True)
+            n += 1
+    return n
+
+
 def natural_key(p: Path):
     """'02 - x' antes de '10 - y', como espera cualquier humano."""
     return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", p.name)]
@@ -123,7 +139,16 @@ def process_cover(img_path: Path):
         print("      (sin Pillow: no puedo procesar la caratula)")
         return None, None
 
-    im = Image.open(img_path).convert("RGB")
+    im = Image.open(img_path)
+    # Un PNG con transparencia no se puede convertir a RGB de golpe: eso tira
+    # el canal alfa y deja a la vista lo que hubiera debajo, que suele ser
+    # basura. Hay que componerlo sobre un fondo primero. Va sobre negro, que
+    # es lo que mejor le queda a la etiqueta de un vinilo.
+    if im.mode in ("RGBA", "LA", "P"):
+        im = im.convert("RGBA")
+        fondo = Image.new("RGBA", im.size, (0, 0, 0, 255))
+        im = Image.alpha_composite(fondo, im)
+    im = im.convert("RGB")
 
     # Recorte cuadrado centrado: la etiqueta es un circulo, cualquier otra
     # proporcion se deformaria al ajustarla.
@@ -246,6 +271,11 @@ def main():
         print(f"   {ORIGEN}/01 FIFA/     (musica + cover.jpg opcional)")
         return 0
 
+    if not args.dry_run:
+        n = limpiar_basura(src)
+        if n:
+            print(f"metadata de macOS borrada del origen: {n} entradas\n")
+
     carpetas = []
     for d in sorted(src.iterdir()):
         if not d.is_dir() or d.name.startswith("."):
@@ -272,7 +302,8 @@ def main():
     manifest = []
     for num, nombre, d in carpetas:
         meta = read_meta(d)
-        files = sorted([p for p in d.iterdir() if p.suffix.lower() in AUDIO_EXT],
+        files = sorted([p for p in d.iterdir()
+                        if p.suffix.lower() in AUDIO_EXT and es_util(p)],
                        key=natural_key)
         print(f"/{num:02d}  {nombre:<22} {len(files)} cancion(es)")
 
@@ -299,7 +330,8 @@ def main():
             print("      (sin musica todavia)")
 
         color, cover = None, None
-        imgs = [p for p in d.iterdir() if p.suffix.lower() in IMG_EXT]
+        imgs = [p for p in d.iterdir()
+                if p.suffix.lower() in IMG_EXT and es_util(p)]
         if imgs:
             color, cover = process_cover(sorted(imgs)[0])
             if color is not None:
@@ -319,12 +351,7 @@ def main():
         })
 
     if not args.dry_run:
-        n = 0
-        for p in sorted(card.rglob("*"), key=lambda x: -len(x.parts)):
-            if p.name in JUNK or p.name.startswith("._"):
-                shutil.rmtree(p, ignore_errors=True) if p.is_dir() else p.unlink(missing_ok=True)
-                n += 1
-        print(f"\nmetadata de macOS borrada: {n} entradas")
+        print(f"\nmetadata de macOS borrada de la tarjeta: {limpiar_basura(card)} entradas")
 
         write_albums_h(fw / "albums.h", manifest)
         write_covers_h(fw / "covers.h", manifest)

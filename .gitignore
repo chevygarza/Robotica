@@ -4,3 +4,4 @@ sd/src/*
 sd/src_test/*
 !sd/src/.gitkeep
 sd/.venv/
+firmware/VNL1/secrets.h

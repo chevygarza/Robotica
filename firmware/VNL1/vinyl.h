@@ -14,14 +14,21 @@ bool vinyl_create(lv_obj_t* parent);
 // lo que tapa la ventana de 260ms del doble push.
 void vinyl_bump();
 
+// Aleja o acerca el vinilo. 100 = llena el cuadro (reproduciendo),
+// ~62 = se encoge y deja ver los discos vecinos (biblioteca).
+void    vinyl_zoom_to(uint8_t pct, uint16_t ms);
+uint8_t vinyl_zoom();
+
 // true mientras el disco todavia tiene inercia, aunque ya se pidio parar.
 bool vinyl_moving();
 
 // animate = cross-fade de la etiqueta al album nuevo.
 void vinyl_set_album(uint8_t idx, bool animate);
 
-// dir: -1 antihorario, +1 horario. Desplaza el highlight hacia ese lado.
-void vinyl_nudge_sheen(int8_t dir);
+// Etiqueta con texto y color propios, para discos que no son un album
+// (hoy: la alarma). Misma pieza, contenido distinto.
+void vinyl_set_custom(const char* name, const char* sub, uint32_t color,
+                      bool animate);
 
 void vinyl_set_spinning(bool on);
 bool vinyl_spinning();
