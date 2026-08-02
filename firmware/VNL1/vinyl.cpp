@@ -85,10 +85,42 @@ static void drawDisc() {
 }
 
 // ── Etiqueta: se redibuja al cambiar de album ────────────────────────────────
+// Cuando el disco trae caratula, la imagen ES la etiqueta: se vuelca pixel a
+// pixel con recorte circular. Es lo unico que se dibuja distinto; el agujero
+// del eje se pone despues igual que siempre.
+static void drawCover(const uint16_t* cover) {
+  const lv_coord_t c = LABEL_D / 2;
+  const int32_t r2 = (int32_t)(c - 1) * (c - 1);
+  for (lv_coord_t y = 0; y < LABEL_D; y++) {
+    int32_t dy = y - c;
+    for (lv_coord_t x = 0; x < LABEL_D; x++) {
+      int32_t dx = x - c;
+      if (dx * dx + dy * dy > r2) continue;      // fuera del circulo: transparente
+      lv_color_t col;
+      col.full = cover[y * LABEL_D + x];
+      lv_canvas_set_px_color(label, x, y, col);
+      lv_canvas_set_px_opa(label, x, y, LV_OPA_COVER);
+    }
+  }
+}
+
 static void drawLabel(uint8_t idx) {
   const Album& a = ALBUMS[idx];
 
   lv_canvas_fill_bg(label, lv_color_black(), LV_OPA_TRANSP);
+
+  if (a.cover) {
+    drawCover(a.cover);
+    lv_draw_rect_dsc_t h2;
+    lv_draw_rect_dsc_init(&h2);
+    h2.radius   = LV_RADIUS_CIRCLE;
+    h2.bg_opa   = LV_OPA_COVER;
+    h2.bg_color = lv_color_black();
+    const lv_coord_t cc = LABEL_D / 2;
+    lv_canvas_draw_rect(label, cc - HOLE_R, cc - HOLE_R,
+                        HOLE_R * 2, HOLE_R * 2, &h2);
+    return;
+  }
 
   lv_draw_rect_dsc_t d;
   lv_draw_rect_dsc_init(&d);

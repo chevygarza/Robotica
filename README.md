@@ -72,6 +72,58 @@ El puerto cambia según el conector físico (`ls /dev/cu.usbmodem*`).
 En el IDE, equivale a: ESP32S3 Dev Module, OPI PSRAM, 16MB flash, huge_app,
 USB CDC On Boot **Enabled** — sin eso el monitor serial no muestra nada.
 
+
+## Agregar música o un disco nuevo
+
+Todo vive en la propia microSD, en la carpeta `_origen`. No hay carpeta local
+ni copias duplicadas: un solo lugar.
+
+**1.** Mete la microSD al Mac.
+
+**2.** Abre `_origen` y arrastra. Para música nueva en un disco que ya existe,
+la sueltas dentro de su carpeta. Para un disco nuevo, creas la carpeta con el
+número que le toque y el nombre que quieras:
+
+```
+_origen/05 Mario Kart/
+        ├── lo que sea.mp3
+        ├── otra cancion.m4a
+        └── cover.jpg          ← opcional
+```
+
+El número decide en qué carpeta de la tarjeta cae y el nombre es el que sale en
+pantalla. El `cover.jpg` se convierte en la etiqueta del vinilo, y de ahí sale
+también el color del anillo de LEDs.
+
+**3.** Conecta la perilla por USB.
+
+**4.** Doble clic en **`Actualizar VinilOS.command`**.
+
+Eso convierte la música, la copia en el orden que el DFPlayer entiende, procesa
+las carátulas, regenera el manifiesto y flashea la perilla. Una sola acción.
+
+**5.** Saca la tarjeta, ponla en el módulo y listo.
+
+### Por qué hay un paso de proceso y no basta con copiar
+
+El DFPlayer solo lee carpetas numéricas (`/01`, `/02`) con archivos llamados
+`001.mp3`, y los ordena por la tabla FAT, no por el nombre. Además la pantalla
+necesita saber cosas que el módulo nunca reporta —cuántas canciones hay, cuánto
+duran, de qué color es cada disco— y eso viaja compilado en el firmware. El
+script genera las dos mitades al mismo tiempo, y por eso la tarjeta y la
+pantalla siempre dicen lo mismo.
+
+Si arrastras música directo a `/01`, no queda convertida ni renombrada, y el
+manifiesto sigue creyendo que ese disco está como estaba.
+
+### Por qué no se puede por WiFi
+
+El ESP32 **no tiene ningún acceso a la microSD**: la tarjeta está cableada solo
+al DFPlayer, y ese módulo no acepta escritura por serial. Es la consecuencia
+directa de la decisión de arranque del proyecto — el CrowPanel no expone
+suficientes pines para manejar la SD por su cuenta. Cambiar música implica sacar
+la tarjeta, y eso no es cuestión de programarlo.
+
 ## Interacción (decidida 2026-07-29)
 
 | Gesto | Selector | Reproducción |
