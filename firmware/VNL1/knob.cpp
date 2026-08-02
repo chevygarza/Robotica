@@ -63,14 +63,23 @@ void begin() {
   lastActivityMs = millis();
 }
 
-void update() {
-  static bool     pressed    = false;
-  static bool     longFired  = false;
-  static uint32_t downMs     = 0;
-  static uint32_t lastEdgeMs = 0;
-  static bool     awaiting   = false;   // hay un push corto sin resolver
-  static uint32_t upMs       = 0;
+// Estado del boton a nivel de archivo: holdMs() necesita verlo desde fuera.
+static bool     pressed    = false;
+static bool     longFired  = false;
+static uint32_t downMs     = 0;
+static uint32_t lastEdgeMs = 0;
+static bool     awaiting   = false;   // hay un push corto sin resolver
+static uint32_t upMs       = 0;
 
+// Cuanto lleva sostenido el boton, en ms. 0 si no esta presionado o si el
+// evento largo ya se disparo. Es lo que alimenta el aro de progreso: sin
+// realimentacion visible, mantener 900ms se siente igual que no hacer nada.
+uint32_t holdMs() {
+  if (!pressed || longFired) return 0;
+  return millis() - downMs;
+}
+
+void update() {
   bool now = (digitalRead(PIN_ENC_SW) == LOW);
   uint32_t t = millis();
 

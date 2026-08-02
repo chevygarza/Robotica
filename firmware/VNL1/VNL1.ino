@@ -101,7 +101,7 @@ void loop() {
 
     static const char* NAMES[] = { "-", "CW", "CCW", "PRESS", "DOBLE", "LONG",
                                    "DOWN" };
-    static const char* STATES[] = { "SELECTOR", "DETALLE", "TOCANDO" };
+    static const char* STATES[] = { "SELECTOR", "TOCANDO" };
     if (e != KNOB_DOWN) {
       Serial.printf("%-6s -> %s\n", NAMES[e], STATES[app_state()]);
     }

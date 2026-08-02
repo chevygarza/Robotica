@@ -1,10 +1,11 @@
 #include "vinyl.h"
 #include "albums.h"
+#include <string.h>
 
 // Todo el layout respeta el circulo de 360x360: nada vive en las esquinas.
 #define DISC_D    VINYL_DISC_D
 #define LABEL_D   VINYL_LABEL_D
-#define HOLE_R      5    // agujero del eje
+#define HOLE_R      6    // agujero del eje
 
 // Velocidad estilizada, no los 33 1/3 RPM reales: a 200 grados/s la etiqueta
 // avanza 8 grados por frame y el texto se ve escalonado. 22 RPM se lee como
@@ -105,22 +106,25 @@ static void drawLabel(uint8_t idx) {
   ring.width = 1;
   lv_canvas_draw_arc(label, c, c, c - 5, 0, 360, &ring);
 
+  // El nombre manda: nombres cortos respiran a 26, los largos bajan a 22 para
+  // no partirse en dos renglones dentro de un circulo.
   lv_draw_label_dsc_t t;
   lv_draw_label_dsc_init(&t);
   t.color        = lv_color_white();
-  t.font         = &lv_font_montserrat_20;
+  t.font         = strlen(a.name) > 7 ? &lv_font_montserrat_22
+                                      : &lv_font_montserrat_26;
   t.align        = LV_TEXT_ALIGN_CENTER;
   t.letter_space = 2;
-  lv_canvas_draw_text(label, 0, c - 34, LABEL_D, &t, a.name);
+  lv_canvas_draw_text(label, 0, c - 46, LABEL_D, &t, a.name);
 
   lv_draw_label_dsc_t s;
   lv_draw_label_dsc_init(&s);
   s.color        = lv_color_white();
   s.opa          = 200;          // al 60% se perdia sobre el verde
-  s.font         = &lv_font_montserrat_12;
+  s.font         = &lv_font_montserrat_16;
   s.align        = LV_TEXT_ALIGN_CENTER;
   s.letter_space = 1;
-  lv_canvas_draw_text(label, 10, c + 12, LABEL_D - 20, &s, a.subtitle);
+  lv_canvas_draw_text(label, 12, c + 18, LABEL_D - 24, &s, a.subtitle);
 
   // Agujero del eje, al final para que quede encima del texto.
   lv_draw_rect_dsc_t hole;

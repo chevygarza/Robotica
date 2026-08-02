@@ -9,6 +9,7 @@
 #define DOT_R         160    // radio donde viven los puntos de pista
 #define VOL_HOLD_MS  1400    // cuanto se queda el overlay de volumen
 #define VOL_STEP        1
+#define HOLD_SHOW_MS  140    // a partir de aqui se ve el aro de "mantener"
 
 static Adafruit_NeoPixel ring(NUM_LEDS, PIN_RGB_DIN, NEO_GRB + NEO_KHZ800);
 
@@ -23,20 +24,18 @@ static uint32_t volShownMs = 0;
 static uint32_t trackStart = 0;    // reloj propio del tiempo transcurrido
 static uint32_t pausedAt   = 0;
 static uint32_t lastSecond = 0;
+static bool     holdShown  = false;
 
 // ── Widgets ──────────────────────────────────────────────────────────────────
-static lv_obj_t* scrim    = nullptr;   // oscurece el vinilo detras del detalle
-static lv_obj_t* detailBox= nullptr;
-static lv_obj_t* dName    = nullptr;
-static lv_obj_t* dSub     = nullptr;
-static lv_obj_t* dMeta    = nullptr;
-static lv_obj_t* dHint    = nullptr;
+static lv_obj_t* selBox   = nullptr;   // info del disco mientras hojeas
+static lv_obj_t* selMeta  = nullptr;
 static lv_obj_t* playBox  = nullptr;
-static lv_obj_t* dots[MAX_DOTS]     = { nullptr };
+static lv_obj_t* dots[MAX_DOTS] = { nullptr };
 static lv_obj_t* timeLbl  = nullptr;
 static lv_obj_t* volBox   = nullptr;
 static lv_obj_t* volArc   = nullptr;
 static lv_obj_t* volLbl   = nullptr;
+static lv_obj_t* holdArc  = nullptr;   // progreso del mantener
 
 // Un solo helper para todas las transiciones: nada de cortes duros.
 static void fadeTo(lv_obj_t* o, lv_opa_t to, uint16_t ms) {
@@ -86,21 +85,44 @@ static lv_obj_t* mkBox(lv_obj_t* parent) {
   return b;
 }
 
+static lv_obj_t* mkRimArc(lv_obj_t* parent, lv_coord_t size, lv_coord_t width,
+                          lv_opa_t bgOpa) {
+  lv_obj_t* a = lv_arc_create(parent);
+  lv_obj_set_size(a, size, size);
+  lv_obj_center(a);
+  lv_obj_remove_style(a, NULL, LV_PART_KNOB);
+  lv_obj_clear_flag(a, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_style_bg_opa(a, LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_set_style_border_opa(a, LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_set_style_arc_color(a, lv_color_white(), LV_PART_MAIN);
+  lv_obj_set_style_arc_opa(a, bgOpa, LV_PART_MAIN);
+  lv_obj_set_style_arc_width(a, width, LV_PART_MAIN);
+  lv_obj_set_style_arc_color(a, lv_color_white(), LV_PART_INDICATOR);
+  lv_obj_set_style_arc_width(a, width, LV_PART_INDICATOR);
+  lv_arc_set_rotation(a, 270);          // el cero arriba, no a las 3
+  lv_arc_set_bg_angles(a, 0, 360);
+  return a;
+}
+
 // ── Contenido ────────────────────────────────────────────────────────────────
 static void fmtTime(char* out, size_t n, uint32_t secs) {
   snprintf(out, n, "%lu:%02lu", (unsigned long)(secs / 60),
            (unsigned long)(secs % 60));
 }
 
-static void refreshDetail() {
+// La info del disco vive en el selector, no en una pantalla aparte: se lee
+// mientras hojeas y no cuesta un push extra.
+static void refreshSelMeta() {
   const Album& a = ALBUMS[album];
-  lv_label_set_text(dName, a.name);
-  lv_label_set_text(dSub, a.subtitle);
-  char meta[48];
-  snprintf(meta, sizeof(meta), "%u canciones - %u min", a.tracks,
-           (unsigned)((a.seconds + 30) / 60));
-  lv_label_set_text(dMeta, meta);
-  lv_label_set_text(dHint, "push para reproducir");
+  char t[48];
+  if (a.tracks == 0) {
+    snprintf(t, sizeof(t), "vacio");
+  } else {
+    snprintf(t, sizeof(t), "%u %s - %u min", a.tracks,
+             a.tracks == 1 ? "cancion" : "canciones",
+             (unsigned)((a.seconds + 30) / 60));
+  }
+  lv_label_set_text(selMeta, t);
 }
 
 // Los puntos se colocan una vez por album: uno por cancion, arrancando arriba.
@@ -151,8 +173,8 @@ static void startAlbum() {
 
 static void goSelector() {
   st = ST_SELECTOR;
-  fadeTo(scrim, 0, 260);
-  fadeTo(detailBox, 0, 200);
+  refreshSelMeta();
+  fadeTo(selBox, 255, 260);
   fadeTo(playBox, 0, 240);
   fadeTo(volBox, 0, 160);
   // El disco frena con inercia; la musica sigue sonando.
@@ -160,19 +182,9 @@ static void goSelector() {
   vinyl_set_album(album, false);
 }
 
-static void goDetail() {
-  st = ST_DETAIL;
-  refreshDetail();
-  fadeTo(scrim, 170, 240);
-  fadeTo(detailBox, 255, 300);
-  fadeTo(playBox, 0, 160);
-  vinyl_set_spinning(false);
-}
-
 static void goPlaying(bool restart) {
   st = ST_PLAYING;
-  fadeTo(scrim, 0, 240);
-  fadeTo(detailBox, 0, 160);
+  fadeTo(selBox, 0, 200);
   fadeTo(playBox, 255, 320);
   vinyl_set_album(album, false);
   vinyl_set_spinning(true);
@@ -214,22 +226,8 @@ bool app_begin() {
   lv_obj_t* scr = lv_scr_act();
   if (!vinyl_create(scr)) return false;
 
-  scrim = lv_obj_create(scr);
-  lv_obj_remove_style_all(scrim);
-  lv_obj_set_size(scrim, 360, 360);
-  lv_obj_center(scrim);
-  lv_obj_set_style_radius(scrim, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_bg_color(scrim, lv_color_black(), 0);
-  lv_obj_set_style_bg_opa(scrim, LV_OPA_COVER, 0);
-  lv_obj_set_style_opa(scrim, LV_OPA_TRANSP, 0);
-  lv_obj_add_flag(scrim, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_clear_flag(scrim, LV_OBJ_FLAG_SCROLLABLE);
-
-  detailBox = mkBox(scr);
-  dName = mkLabel(detailBox, &lv_font_montserrat_28, LV_OPA_COVER, 116);
-  dSub  = mkLabel(detailBox, &lv_font_montserrat_16, 180, 154);
-  dMeta = mkLabel(detailBox, &lv_font_montserrat_14, 140, 198);
-  dHint = mkLabel(detailBox, &lv_font_montserrat_12,  90, 238);
+  selBox  = mkBox(scr);
+  selMeta = mkLabel(selBox, &lv_font_montserrat_14, 130, 254);
 
   playBox = mkBox(scr);
   for (uint8_t i = 0; i < MAX_DOTS; i++) {
@@ -241,32 +239,30 @@ bool app_begin() {
     lv_obj_set_style_bg_opa(dots[i], 40, 0);
     lv_obj_add_flag(dots[i], LV_OBJ_FLAG_HIDDEN);
   }
-  timeLbl = mkLabel(playBox, &lv_font_montserrat_16, 190, 252);
+  timeLbl = mkLabel(playBox, &lv_font_montserrat_16, 190, 254);
   lv_label_set_text(timeLbl, "0:00");
 
   // Overlay de volumen: aro sobre el canto del disco + el numero. Aparece al
-  // girar y se va solo. Es lo unico que ocupa ese anillo en ese momento, asi
-  // que no compite con los puntos de pista.
+  // girar y se va solo.
   volBox = mkBox(scr);
-  volArc = lv_arc_create(volBox);
-  lv_obj_set_size(volArc, 296, 296);
-  lv_obj_center(volArc);
-  lv_obj_remove_style(volArc, NULL, LV_PART_KNOB);
-  lv_obj_clear_flag(volArc, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_set_style_bg_opa(volArc, LV_OPA_TRANSP, LV_PART_MAIN);
-  lv_obj_set_style_border_opa(volArc, LV_OPA_TRANSP, LV_PART_MAIN);
-  lv_obj_set_style_arc_color(volArc, lv_color_white(), LV_PART_MAIN);
-  lv_obj_set_style_arc_opa(volArc, 30, LV_PART_MAIN);
-  lv_obj_set_style_arc_width(volArc, 4, LV_PART_MAIN);
-  lv_obj_set_style_arc_color(volArc, lv_color_white(), LV_PART_INDICATOR);
-  lv_obj_set_style_arc_width(volArc, 4, LV_PART_INDICATOR);
-  lv_arc_set_rotation(volArc, 270);          // el cero arriba, no a las 3
-  lv_arc_set_bg_angles(volArc, 0, 360);
+  volArc = mkRimArc(volBox, 296, 4, 30);
   lv_arc_set_range(volArc, 0, PLAYER_VOL_MAX);
   lv_arc_set_value(volArc, vol);
   volLbl = mkLabel(volBox, &lv_font_montserrat_20, LV_OPA_COVER, 250);
 
+  // Aro del mantener: crece mientras sostienes y completa la vuelta justo
+  // cuando el gesto se dispara. Sin esto, mantener 900ms se siente identico a
+  // no hacer nada, y el usuario suelta antes de tiempo creyendo que no sirve.
+  holdArc = mkRimArc(scr, 330, 4, 0);
+  lv_arc_set_range(holdArc, 0, 100);
+  lv_arc_set_value(holdArc, 0);
+  lv_obj_set_style_opa(holdArc, LV_OPA_TRANSP, 0);
+  lv_obj_add_flag(holdArc, LV_OBJ_FLAG_HIDDEN);
+
   vinyl_set_album(album, false);
+  refreshSelMeta();
+  lv_obj_clear_flag(selBox, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_set_style_opa(selBox, LV_OPA_COVER, 0);
   paintRing();
   return true;
 }
@@ -276,23 +272,18 @@ void app_event(KnobEvent e) {
 
   switch (st) {
     case ST_SELECTOR:
-      if (e == KNOB_CW && album < ALBUM_COUNT - 1) {
-        album++; vinyl_set_album(album, true); vinyl_nudge_sheen(+1);
-      } else if (e == KNOB_CCW && album > 0) {
-        album--; vinyl_set_album(album, true); vinyl_nudge_sheen(-1);
-      } else if (e == KNOB_CW || e == KNOB_CCW) {
-        vinyl_nudge_sheen(e == KNOB_CW ? +1 : -1);   // topa, pero la luz acusa
+      if (e == KNOB_CW || e == KNOB_CCW) {
+        if (e == KNOB_CW && album < ALBUM_COUNT - 1)  album++;
+        else if (e == KNOB_CCW && album > 0)          album--;
+        vinyl_set_album(album, true);
+        vinyl_nudge_sheen(e == KNOB_CW ? +1 : -1);
+        refreshSelMeta();
       } else if (e == KNOB_PRESS) {
-        // Si este disco es el que suena, regresas a la reproduccion sin
-        // reiniciarla. Si es otro, entras a su detalle.
-        if (loaded == (int8_t)album && trackIx) goPlaying(false);
-        else goDetail();
+        // Sin escalas: un push y suena. Si este disco es el que ya suena,
+        // regresas a el sin reiniciarlo.
+        bool mismo = (loaded == (int8_t)album && trackIx);
+        goPlaying(!mismo);
       }
-      break;
-
-    case ST_DETAIL:
-      if (e == KNOB_PRESS)           goPlaying(true);
-      else if (e == KNOB_LONG_PRESS) goSelector();
       break;
 
     case ST_PLAYING:
@@ -339,6 +330,18 @@ void app_event(KnobEvent e) {
 
 void app_tick() {
   vinyl_tick();
+
+  // Aro de progreso del mantener. Solo tiene sentido en reproduccion, que es
+  // donde el gesto hace algo.
+  uint32_t h = (st == ST_PLAYING) ? knob::holdMs() : 0;
+  if (h > HOLD_SHOW_MS) {
+    int32_t pct = (int32_t)((h * 100) / KNOB_LONG_PRESS_MS);
+    lv_arc_set_value(holdArc, pct > 100 ? 100 : pct);
+    if (!holdShown) { holdShown = true; fadeTo(holdArc, 220, 90); }
+  } else if (holdShown) {
+    holdShown = false;
+    fadeTo(holdArc, 0, 180);
+  }
 
   // El overlay de volumen se retira solo y devuelve el tiempo a su lugar.
   if (volShownMs && millis() - volShownMs > VOL_HOLD_MS) {

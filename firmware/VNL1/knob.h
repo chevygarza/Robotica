@@ -42,6 +42,7 @@ namespace knob {
 void      begin();
 void      update();      // sondea el push; llamar en cada pasada del loop
 KnobEvent read();        // siguiente evento, o KNOB_NONE
+uint32_t  holdMs();      // ms que lleva sostenido el push (0 si no aplica)
 uint32_t  idleMs();      // ms desde el ultimo evento (para el auto-apagado)
 void      touch();       // registra actividad externa, ej. el tactil
 int32_t   diagCount();   // sub-pasos acumulados, solo diagnostico

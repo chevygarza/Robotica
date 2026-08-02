@@ -4,7 +4,9 @@
 
 // Geometria, para que los overlays sepan donde termina el disco.
 #define VINYL_DISC_D    336
-#define VINYL_LABEL_D   132
+// Subida 30% (era 132): a 132 el nombre del album quedaba en el limite de lo
+// legible a un brazo de distancia, que es como se mira un objeto de escritorio.
+#define VINYL_LABEL_D   172
 
 bool vinyl_create(lv_obj_t* parent);
 
