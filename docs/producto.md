@@ -111,6 +111,76 @@ dispara hasta tener hora verificada.
 **Máximo unos treinta discos**, por el espacio que ocupan las carátulas en la
 partición de 8MB. La música no cuenta: vive en la tarjeta.
 
+
+## Lista de materiales
+
+Todo lo que lleva una unidad completa.
+
+### Módulos
+
+| Pieza | Especificación | Cant. |
+|---|---|---|
+| Placa principal | Elecrow CrowPanel 1.46" HMI ESP32-S3 Rotary Display | 1 |
+| Módulo de audio | DFPlayer Mini — el clon MH2024K funciona | 1 |
+| Tarjeta de memoria | microSD 32GB Clase 10, formateada en FAT32 | 1 |
+| Bocina | 4Ω 3W, 40mm, carcasa metálica | 1 |
+
+La microSD **no puede pasar de 32GB**: es límite del módulo de audio, no del
+formato.
+
+### Componentes
+
+| Pieza | Valor | Cant. | Para qué |
+|---|---|---|---|
+| Resistencia | 1kΩ, 1/4W | 1 | En la línea TX→RX. Sin ella se acopla ruido del ESP32 al amplificador y se oye un siseo constante |
+| Capacitor electrolítico | 1000µF 16V | 1 | Entre VCC y GND del módulo de audio. Sin él, el golpe de corriente al arrancar una canción tumba el voltaje y reinicia la placa |
+
+Los dos vienen en los kits ELEGOO. La resistencia de 1kΩ es café-negro-rojo-dorado.
+
+### Cableado
+
+| Pieza | Notas | Cant. |
+|---|---|---|
+| Cable JST 1.25mm 4 pines | Viene uno en la caja del CrowPanel. Va del conector UART al módulo de audio | 1 |
+| Conectores Dupont hembra | Para rematar el cable JST del lado del módulo | 4 |
+| Termorretráctil o cinta | Para aislar la unión de la resistencia | — |
+| Estaño | — | — |
+
+La unión de la resistencia **tiene que quedar aislada**: va en medio de cuatro
+conductores que se doblan dentro de la caja, y un corto contra el rojo mete 5V
+directo a un GPIO.
+
+### Caja
+
+| Pieza | Especificación |
+|---|---|
+| Acrílico transparente colado | 3mm de espesor |
+| Medidas interiores | 9 × 9 × 8 cm |
+| Barreno frontal | 54mm, para la perilla |
+| Rejilla superior | 25 barrenos de 3mm en patrón hexagonal |
+
+Considerar una **ranura de acceso a la microSD** en una cara: cambiar música
+implica sacar la tarjeta, y sin ranura hay que abrir la caja cada vez.
+
+### Alimentación
+
+| Pieza | Especificación |
+|---|---|
+| Cargador USB de pared | 5V, **2A mínimo** |
+
+Los 2A no son por consumo promedio —la caja anda en 300 a 400 mA— sino por los
+picos del amplificador al arrancar una canción. Con una fuente floja el aparato
+se reinicia justo al empezar a sonar.
+
+### Lo que NO lleva
+
+Piezas que estuvieron en el plan original y quedaron descartadas:
+
+- **Cable FPC de 12 pines.** El módulo de audio terminó en el conector UART de 4
+  hilos, que ya viene con la placa.
+- **Amplificador externo.** Eso es la Max.
+- **Batería.** La Base va por cable.
+
 ## Rendimiento
 
 | Estado | fps |
