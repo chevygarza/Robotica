@@ -1,16 +1,21 @@
-# Stuntech VNL-1
+# Stuntech VNL-1 · VinilOS
 
-Reproductor de vinilos digital. Caja de acrílico transparente, pantalla redonda,
-interacción exclusivamente por perilla. Proyecto independiente: no comparte código
-ni carpetas con StuntHub ni TMEhub.
+Reproductor de música de escritorio con estética de tornamesa. Caja de acrílico,
+pantalla redonda, **interacción exclusivamente por perilla**. Proyecto
+independiente: no comparte código ni carpetas con StuntHub ni TMEhub.
 
 ```
 VNL1/
-├── firmware/VNL1/     sketch de Arduino (VNL1.ino + pins.h + knob.h)
-├── sd/                estructura de la microSD del DFPlayer (01/ 02/ 03/)
-├── backup/            respaldo de fábrica de esta placa
+├── Actualizar VinilOS.command   doble clic: sincroniza la SD y flashea
+├── firmware/VNL1/               el sketch completo
+├── sd/prepare_sd.py             el motor del doble clic
+├── sd/.venv/                    entorno con Pillow (para las carátulas)
+├── backup/                      respaldo de fábrica de esta placa
 └── docs/
 ```
+
+Las carpetas `sd/01`, `sd/02`, `sd/03`, `sd/src` y `sd/src_test` son restos de
+cuando el origen de la música vivía en el Mac. Ya no participan en nada.
 
 ## Placa
 
@@ -30,179 +35,267 @@ esptool --port <PUERTO> write-flash 0x0 backup/factory_full_16MB.bin
 | Función | GPIO |
 |---|---|
 | Encoder A / B / push | 45 / 42 / 41 |
-| **Corriente de la pantalla** | **1 y 2, ambos en HIGH** |
+| **Corriente del panel** | **1 en HIGH** |
+| **5V de los conectores UART e I2C** | **2 en HIGH** |
 | Backlight (PWM para el fade) | 46 |
 | Anillo RGB: DIN / PWR | 48 / 17 — 8 LEDs |
 | LED de power (activo en LOW) | 40 |
 | Pantalla SPI: SCLK / MOSI / CS / DC / RST | 10 / 11 / 9 / 3 / 14 |
 | Touch CST816T (bus I2C 0): SDA / SCL / INT / RST | 6 / 7 / 5 / 13 |
 | I2C libre del header (bus 1) | 38 / 39 |
-| DFPlayer: TX / RX del ESP32 | 4 / 12 |
+| DFPlayer: TX / RX del ESP32 | 43 / 44 (conector UART) |
 
-Tres cosas que ninguna guía documenta y que cuestan un ciclo de flasheo cada una:
+### Cuatro cosas que ninguna guía documenta
 
-- **GPIO 1 y GPIO 2 deben estar en HIGH o la pantalla no recibe corriente.** El SPI
-  puede estar perfecto y la pantalla queda negra. Sale solo del código de fábrica.
-- El táctil vive en el bus I2C 0 remapeado a **6/7**. El 38/39 es un bus
-  **distinto** (`TwoWire(1)`), el del header de expansión. Son dos buses, no uno.
-- `memory_height` del panel va en **360**. El default de LovyanGFX para el
-  ST77961 es 390 y la imagen queda corrida.
+Cada una costó al menos un ciclo de depuración, y una costó una sesión entera.
 
-El DFPlayer va en UART1 sobre IO4/IO12, **no** en el par TX/RX del header: ese es
-UART0 y se pelea con el monitor serial, único canal de depuración que hay.
+**`GPIO2` es el interruptor del riel de 5V de los conectores.** Verificado en el
+esquemático oficial: `GPIO2 → R23 → Q7 (S9013) → compuerta de Q4 (PMOS) → OUT_5V`.
+Cualquier sketch que hable con un periférico de esos conectores **tiene que
+ponerlo en HIGH**, aunque no use la pantalla para nada. Si falta, el pin de 5V
+flota y da lecturas decrecientes que parecen cable roto.
+
+**`GPIO1` alimenta el panel.** Sin él la pantalla queda negra aunque el SPI esté
+perfecto. El comentario del código de Elecrow atribuye los dos pines a la
+pantalla, y eso es lo que despista.
+
+**El táctil vive en el bus I2C 0 remapeado a 6/7.** El 38/39 es un bus
+**distinto** (`TwoWire(1)`), el del header de expansión. Son dos buses, no uno.
+
+**`memory_height` del panel va forzado a 360.** El default de LovyanGFX para el
+ST77961 es 390 y la imagen queda corrida.
+
+### El DFPlayer va en el conector UART de 4 hilos
+
+Expone `GPIO43/44`, y eso **no se pelea con el monitor serial**: con `USB CDC On
+Boot`, `Serial` es el USB nativo del S3, no UART0. Los pines quedan libres y el
+firmware usa UART1 ruteado a ellos por la matriz de GPIO. No hace falta el cable
+FPC del header de expansión.
+
+Colores del cable de Elecrow: **amarillo = RX, blanco = TX, rojo = 5V, negro = GND.**
+
+Las líneas seriales del conector están elevadas a 5V con MOSFETs BSN20 y
+pull-ups de 10k, así que en reposo TX y RX miden **4.65V**, no 3.3V. Es normal.
 
 ## Entorno
 
-- Core `esp32:esp32` **2.0.17**. No subir a 3.x: rompe `ledcSetup`, que se usa para
-  el fade del backlight, y no aporta nada aquí.
+- Core `esp32:esp32` **2.0.17**. No subir a 3.x: rompe `ledcSetup`, que se usa
+  para el fade del backlight, y no aporta nada aquí.
 - LovyanGFX **1.2.7**. La 1.2.21 deja la pantalla en blanco en esta placa.
-- LVGL 8.3 con el `lv_conf.h` que ya vive en `~/Documents/Arduino/libraries/`.
+- LVGL 8.3 con el `lv_conf.h` de `~/Documents/Arduino/libraries/`.
+- `DFRobotDFPlayerMini`, `Adafruit_NeoPixel`, `cst816t`.
 - Panel LovyanGFX = **ST77961**, no GC9A01 (el wiki de Elecrow se equivoca).
-- Pendiente instalar: `DFRobotDFPlayerMini`.
+- `firmware/VNL1/secrets.h` con el WiFi. Está en `.gitignore`.
 
-Compilar y flashear:
+### Partición propia
+
+`huge_app` da 3MB a la aplicación y con 220KB por carátula eso topa en nueve
+discos. Se usa `vnl1_8M.csv`, que le da **8MB** — más de treinta discos. El
+archivo vive en `<core esp32>/tools/partitions/`.
 
 ```
 cd firmware/VNL1
 arduino-cli compile --upload -p <PUERTO> \
-  --fqbn "esp32:esp32:esp32s3:PSRAM=opi,FlashSize=16M,PartitionScheme=huge_app,USBMode=hwcdc,CDCOnBoot=cdc" .
+  --fqbn "esp32:esp32:esp32s3:PSRAM=opi,FlashSize=16M,PartitionScheme=huge_app,USBMode=hwcdc,CDCOnBoot=cdc" \
+  --build-property build.partitions=vnl1_8M \
+  --build-property upload.maximum_size=8388608 .
 ```
 
-El puerto cambia según el conector físico (`ls /dev/cu.usbmodem*`).
-En el IDE, equivale a: ESP32S3 Dev Module, OPI PSRAM, 16MB flash, huge_app,
-USB CDC On Boot **Enabled** — sin eso el monitor serial no muestra nada.
-
+El doble clic ya usa este esquema. El puerto cambia según el conector físico
+(`ls /dev/cu.usbmodem*`).
 
 ## Agregar música o un disco nuevo
 
-Todo vive en la propia microSD, en la carpeta `_origen`. No hay carpeta local
-ni copias duplicadas: un solo lugar.
+Todo vive en la propia microSD, en la carpeta `_origen`. No hay carpeta local ni
+copias duplicadas: un solo lugar.
 
-**1.** Mete la microSD al Mac.
+**1.** Mete la microSD al Mac y conecta la perilla por USB.
 
-**2.** Abre `_origen` y arrastra. Para música nueva en un disco que ya existe,
-la sueltas dentro de su carpeta. Para un disco nuevo, creas la carpeta con el
+**2.** Abre `_origen` y arrastra. Para un disco nuevo, crea su carpeta con el
 número que le toque y el nombre que quieras:
 
 ```
 _origen/05 Mario Kart/
         ├── lo que sea.mp3
         ├── otra cancion.m4a
-        └── cover.jpg          ← opcional
+        └── cover.png          ← opcional
 ```
 
-El número decide en qué carpeta de la tarjeta cae y el nombre es el que sale en
-pantalla. El `cover.jpg` se convierte en la etiqueta del vinilo, y de ahí sale
-también el color del anillo de LEDs.
+**3.** Doble clic en **`Actualizar VinilOS.command`**.
 
-**3.** Conecta la perilla por USB.
+**4.** Saca la tarjeta, ponla en el módulo.
 
-**4.** Doble clic en **`Actualizar VinilOS.command`**.
+El número decide en qué carpeta de la tarjeta cae; el nombre es el que sale en
+pantalla. Solo se reconvierte lo que cambió: si únicamente tocaste una carátula,
+la música se salta y termina en segundos.
 
-Eso convierte la música, la copia en el orden que el DFPlayer entiende, procesa
-las carátulas, regenera el manifiesto y flashea la perilla. Una sola acción.
+### La carátula
 
-**5.** Saca la tarjeta, ponla en el módulo y listo.
+Cualquier formato (`jpg`, `png`, `webp`). Se recorta al centro en cuadrado, se
+ajusta a 336 píxeles y se le aplica máscara circular — **las esquinas se
+pierden**. De ella salen dos cosas: la imagen del disco y los **ocho colores del
+anillo**, uno por LED, tomados del sector que cada uno tiene detrás.
 
-### Por qué hay un paso de proceso y no basta con copiar
+Para que el color del anillo no salga apagado, se le sube saturación y
+luminosidad: un color fiel puede ser demasiado oscuro para un LED.
 
-El DFPlayer solo lee carpetas numéricas (`/01`, `/02`) con archivos llamados
-`001.mp3`, y los ordena por la tabla FAT, no por el nombre. Además la pantalla
-necesita saber cosas que el módulo nunca reporta —cuántas canciones hay, cuánto
-duran, de qué color es cada disco— y eso viaja compilado en el firmware. El
-script genera las dos mitades al mismo tiempo, y por eso la tarjeta y la
-pantalla siempre dicen lo mismo.
+Se puede forzar el color desde un `album.txt` en la carpeta del disco:
 
-Si arrastras música directo a `/01`, no queda convertida ni renombrada, y el
-manifiesto sigue creyendo que ese disco está como estaba.
+```
+subtitulo = Mejores canciones
+color     = 0x1DB954
+```
+
+### Por qué hay un paso de proceso
+
+El DFPlayer solo lee carpetas numéricas con archivos `001.mp3`, y **los ordena
+por la tabla FAT, no por el nombre**. Además la pantalla necesita saber cosas que
+el módulo nunca reporta —cuántas canciones, cuánto dura cada una, de qué color es
+el disco, cómo se ve la portada— y eso viaja compilado en el firmware. El script
+genera las dos mitades al mismo tiempo, y por eso tarjeta y pantalla nunca se
+desincronizan.
+
+macOS escribe metadata invisible (`.DS_Store`, `._001.mp3`) que **el DFPlayer
+cuenta como pistas**: te toca silencio donde debería ir música. El script la
+borra en cada corrida.
 
 ### Por qué no se puede por WiFi
 
-El ESP32 **no tiene ningún acceso a la microSD**: la tarjeta está cableada solo
-al DFPlayer, y ese módulo no acepta escritura por serial. Es la consecuencia
-directa de la decisión de arranque del proyecto — el CrowPanel no expone
-suficientes pines para manejar la SD por su cuenta. Cambiar música implica sacar
-la tarjeta, y eso no es cuestión de programarlo.
+El ESP32 **no tiene ningún acceso a la microSD**: está cableada solo al DFPlayer,
+y ese módulo no acepta escritura por serial. Es la consecuencia directa de la
+decisión de arranque — el CrowPanel no expone suficientes pines para manejar la
+SD por su cuenta. Cambiar música implica sacar la tarjeta.
 
-## Interacción (decidida 2026-07-29)
+## Interacción
 
-| Gesto | Selector | Reproducción |
-|---|---|---|
-| Girar | cambia de disco | **volumen** |
-| Push | entra / arranca el álbum barajado | pausa / reanuda |
-| Doble push | — | siguiente canción |
-| Push 3s | — | la aguja se levanta y vuelve a la biblioteca |
+La biblioteca es circular: pasado el último disco vuelve el primero. Al final de
+la fila hay dos discos especiales, **Alarma** y **Ajustes**, que se alcanzan
+girando como cualquier álbum.
 
-Reglas que sostienen el diseño:
+| Gesto | Biblioteca | Reproducción | Alarma y Ajustes |
+|---|---|---|---|
+| Girar | cambia de disco | **volumen** | mueve o edita el campo |
+| Push | reproduce ya | pausa / reanuda | entra o confirma el campo |
+| Doble push | — | siguiente canción | — |
+| Mantener (900ms) | — | vuelve a la biblioteca | sale y guarda |
 
-- **La pantalla es el indicador de modo.** Con una sola perilla, el giro no puede
-  significar dos cosas en la misma pantalla sin que el usuario quede a ciegas. Por
-  eso el push profundo no cambia el modo del giro en su lugar: cambia de pantalla,
-  y el giro significa lo que esa pantalla dice.
-- **Al volver a la biblioteca la música sigue.** El anillo de LEDs sigue respirando
-  con el color del álbum que suena, así se sabe cuál es sin leer nada.
-- **Push sobre el disco que ya suena = regresar a la reproducción**, sin reiniciar.
-  Salir de la biblioteca por error no cuesta nada.
-- El push corto llega con **260ms de retardo** (`KNOB_DOUBLE_MS`): es el precio de
-  tener doble push, no hay forma de evitarlo con un solo botón. Se compensa con
-  feedback visual en `KNOB_DOWN`, que se emite al instante de apretar.
+### Reglas que sostienen el diseño
 
-## Etapas
+**La pantalla es el indicador de modo.** Con una sola perilla, el giro no puede
+significar dos cosas en la misma pantalla sin dejar al usuario a ciegas. Por eso
+el mantener no cambia el modo del giro en su lugar: cambia de pantalla.
 
-1. **Encoder** — ✅ verificada en placa. Horario = CW, 4 sub-pasos por muesca,
-   sin eventos fantasma al presionar.
-2. **Pantalla** — ✅ flasheada. LVGL + vinilo girando a 26 fps estables, táctil
-   inicializando sin error. Falta la revisión visual.
-3. **DFPlayer** — ⏳ código escrito y compilando, sin hardware para probar.
-   `player.cpp` ya trae el throttling de 60ms, el colapso de comandos de volumen
-   y el barajado Fisher-Yates. Activar con `#define STAGE3_AUDIO 1`.
-4. **Integración** — ✅ flasheada. Los tres estados con sus transiciones,
-   overlay de volumen, puntos de pista, inercia del disco. Verificada con la
-   secuencia automática de `#define SELFTEST 1`, que inyecta todos los gestos.
-5. **LEDs** — ✅ incluida en la etapa 4: el anillo toma el color del álbum que
-   **suena**, no del que estás hojeando, y respira solo mientras hay música.
-6. **Pulido** — pendiente: auto-apagado a 20s con fade (el backlight y
-   `knob::idleMs()` ya están listos), brazo/aguja dibujado, feedback de
-   `KNOB_DOWN` más allá del bump de la etiqueta.
+**Los dos estados se distinguen por escala y compañía.** En la biblioteca la
+cámara está lejos: el disco al 62% y los vecinos asomando por los costados. Al
+reproducir se acerca y el disco llena el cuadro, solo.
 
-### Sobre el progreso de la canción
+**Al volver a la biblioteca la música sigue.** El anillo sigue respirando con el
+color del disco que suena. Un push sobre ese mismo disco regresa sin reiniciar.
 
-El manifiesto tiene la duración del **álbum**, no de cada pista, y el DFPlayer no
-reporta metadata. Dividir el total entre 10 daría una barra que termina antes o
-después que la canción. Así que la reproducción muestra **un punto por canción**
-en el canto del disco (eso sí se sabe con certeza) y el tiempo cuenta hacia
-arriba sin total falso. Cuando los MP3 estén en `sd/`, se saca la duración exacta
-de cada archivo con `ffprobe` y se regenera `albums.h` — ahí la barra real se
-vuelve posible.
+**El mantener se ve.** Un aro crece alrededor del canto y completa la vuelta
+justo cuando el gesto dispara. Sin esa realimentación, mantener se siente igual
+que no hacer nada, y el usuario suelta antes de tiempo.
 
-## Runbook para cuando llegue el DFPlayer
+**El push corto llega con 260ms de retardo** (`KNOB_DOUBLE_MS`): es el precio de
+tener doble push con un solo botón. Se compensa con el evento `KNOB_DOWN`, que
+se emite al instante de apretar y encoge la etiqueta.
 
-1. **Cableado.** VCC y GND del DFPlayer **en estrella** desde el punto de entrada
-   del USB, no en serie a través del CrowPanel. Resistencia de 1kΩ en la línea
-   IO4 → RX del módulo. Capacitor de 1000µF entre VCC y GND del DFPlayer, o los
-   picos de audio le tiran el voltaje y se resetea. Bocina en SPK1/SPK2.
-2. **microSD.** FAT32, formateada en la Mac con `MS-DOS (FAT)`. Poner los audios
-   (cualquier formato) en `sd/src/01`, `sd/src/02`, `sd/src/03` y correr:
+**Al pausar, el disco se detiene derecho.** Sigue de largo hasta completar la
+vuelta y se asienta en cero. Un plato real para donde cae, pero en pantalla eso
+se lee como falla — y esa posición torcida se arrastraba a toda la biblioteca.
 
-   ```
-   python3 sd/prepare_sd.py --out /Volumes/<TARJETA> --clean-card
-   ```
+## Ajustes
 
-   Convierte a MP3 192kbps CBR 44.1kHz, nombra `001.mp3`…, copia en orden, y
-   genera `firmware/VNL1/albums_gen.h` con la duración **exacta de cada pista**
-   sacada con ffprobe. Dos trampas que el script cubre: el DFPlayer ordena por
-   tabla FAT y no por nombre, y cuenta la metadata invisible de macOS
-   (`.DS_Store`, `._001.mp3`, `.Spotlight-V100`) como pistas — de ahí
-   `--clean-card`.
-3. **Firmware.** Poner `#define STAGE3_AUDIO 1` en `VNL1.ino`, compilar, flashear.
-   El push del selector arranca el álbum barajado.
-4. Si el módulo no contesta, el serial lo dice y la pantalla sigue funcionando:
-   revisar VCC, el 1kΩ y que la SD esté en FAT32.
+Siete campos, guardados en NVS:
+
+| Campo | Opciones |
+|---|---|
+| Al terminar | detener · repetir · infinito |
+| Reposo | 1, 3, 5, 10, 30 min · nunca |
+| Luz reposo | 0 a 100% (sin música) |
+| Luz música | 0 a 100% (con música) |
+| Brillo | 30 a 100% |
+| LEDs | sí · no |
+| Brillo LEDs | 20 a 100% |
+
+El brillo y los LEDs se aplican **mientras giras**, no al salir: ajustar a ciegas
+y ver el resultado después sería adivinar. Con los LEDs en "no" se corta la
+corriente de la tira (`GPIO17`), no solo el brillo — un LED apagado por brillo
+sigue alimentado y sigue calentando dentro de una caja cerrada.
+
+En reposo se retiran juntos pantalla, anillo y LED de encendido. Los primeros
+valores por defecto fueron 30 segundos y apagado total, y en la práctica se leía
+como aparato descompuesto: lo mirabas, estaba negro, y creías que se colgó.
+
+## Alarma
+
+Un disco más de la biblioteca, no un menú escondido. Hora, minuto (de cinco en
+cinco), días por presets, disco a sonar y activada.
+
+El reloj viene por **WiFi y NTP** — el ESP32 no tiene reloj con pila. La alarma
+**solo dispara con hora verificada**: sin NTP el reloj arranca en 1970 y sonaría
+al encender. Al sonar, la pantalla amanece con un fade de casi un segundo y
+**cualquier push la apaga**, que es lo que hace una mano dormida.
+
+## Estado
+
+Todo lo planeado está construido y probado en placa:
+
+- **Perilla** — horario = CW, 4 sub-pasos por muesca. El botón se sondea en el
+  **segundo núcleo cada 5ms**, así que responde igual sin importar los fps.
+- **Pantalla** — LVGL sobre LovyanGFX, carátula a disco completo girando.
+- **Audio** — DFPlayer con barajado Fisher-Yates, throttling de 60ms, rampa de
+  arranque de volumen y avance automático de pista.
+- **Biblioteca** — circular, con vecinos, carátulas y datos del disco.
+- **Alarma y Ajustes** — persistidos en NVS.
+- **Anillo** — ocho colores tomados de la carátula.
+- **Pipeline de la SD** — un doble clic, incremental.
+
+### Rendimiento
+
+| Estado | fps |
+|---|---|
+| Biblioteca (nada se mueve) | ~500 |
+| Reproduciendo, carátula girando | ~13 |
+
+Rotar los 336 píxeles de la carátula cuesta caro. Se compensa girando a **3 RPM**
+—una vuelta cada veinte segundos— y **sin suavizado**, que fue lo que llevó de
+6.6 a 13 fps. La perilla no se ve afectada porque vive en el otro núcleo.
+
+## El módulo DFPlayer
+
+El de esta caja es un **clon MH2024K**, no el YX5200 original. Dos consecuencias:
+
+**`isACK = false` no es negociable.** Con `true`, la librería se queda en un
+bucle infinito dentro de `sendStack()` esperando la confirmación de cada comando,
+y este clon confirma unos sí y otros no. El sketch se cuelga en seco, sin timeout
+que lo salve. No se pierde nada importante: los avisos útiles llegan solos.
+
+**Necesita ~2 segundos tras energizarse** antes de aceptar comandos.
+
+### Cableado
+
+```
+Cable UART            DFPlayer Mini
+──────────────────────────────────
+rojo    (5V)  ─────────► VCC   (pin 8)
+negro   (GND) ─────────► GND   (pin 2)
+blanco  (TX)  ──[1kΩ]──► RX    (pin 7)
+amarillo(RX)  ◄───────── TX    (pin 6)
+                         bocina entre pines 1 y 3
+```
+
+La resistencia de 1kΩ va **solo** en la línea TX→RX: sin ella entra ruido del
+ESP32 al amplificador. El capacitor de 1000µF entre VCC y GND del módulo evita
+que los picos de audio tumben el voltaje.
+
+El LED rojo del módulo **no se puede apagar por software** — está cableado al
+hardware. Se tapa con pintura.
 
 ## Notas
 
-- La fuente Montserrat de LVGL no trae acentos ni `…`/`—`. Textos en pantalla en
-  ASCII, o se embebe una SF Pro convertida.
-- El DFPlayer no reporta duración ni metadata: todo sale del manifiesto.
-- microSD máximo 32GB, FAT32 obligatorio. No hay forma de escribirla desde el
-  ESP32; cambiar música implica sacar la tarjeta.
+- La fuente Montserrat de LVGL no trae acentos ni `…`/`—`. Todo el texto de
+  pantalla va en ASCII.
+- microSD máximo 32GB, FAT32 obligatorio.
+- Al leer el serial desde scripts: abrir el puerto con **DTR y RTS en `False`
+  antes de `open()`** y no togglearlos, o el S3 se queda en modo DOWNLOAD.

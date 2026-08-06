@@ -6,7 +6,7 @@
 #define VINYL_DISC_D    336
 // Subida 30% (era 132): a 132 el nombre del album quedaba en el limite de lo
 // legible a un brazo de distancia, que es como se mira un objeto de escritorio.
-#define VINYL_LABEL_D   172
+#define VINYL_LABEL_D   200
 
 bool vinyl_create(lv_obj_t* parent);
 
@@ -17,6 +17,15 @@ void vinyl_bump();
 // Aleja o acerca el vinilo. 100 = llena el cuadro (reproduciendo),
 // ~62 = se encoge y deja ver los discos vecinos (biblioteca).
 void    vinyl_zoom_to(uint8_t pct, uint16_t ms);
+
+// true = la caratula llena el disco (biblioteca). false = vinilo con etiqueta
+// al centro, que es el unico que puede girar sin hundir los fps.
+void    vinyl_cover_mode(bool on);
+
+// Puntos de pista pintados DENTRO del disco. Como objetos sueltos parpadeaban:
+// son dieciseis piezas chicas y brillantes que LVGL redibuja sobre el disco, y
+// sin sincronia vertical cada redibujo se ve como un destello.
+void    vinyl_set_dots(uint8_t total, uint8_t actual, uint32_t color);
 uint8_t vinyl_zoom();
 
 // true mientras el disco todavia tiene inercia, aunque ya se pidio parar.

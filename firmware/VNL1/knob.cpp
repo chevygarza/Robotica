@@ -51,6 +51,22 @@ static void IRAM_ATTR onEncoderEdge() {
   }
 }
 
+static void sondearBoton();   // definida mas abajo
+
+// El boton se sondea en el OTRO nucleo, cada 5ms. Antes vivia dentro del
+// bucle principal, y con la caratula girando ese bucle corre 13 veces por
+// segundo: la perilla se leia cada 77ms, con un antirrebote calibrado a 25 y
+// una ventana de doble push de 260. Funcionaba al filo.
+//
+// El ESP32 tiene dos nucleos y solo usabamos uno. Ahora el dibujado puede
+// tardar lo que quiera sin que la perilla pierda un solo push.
+static void tareaBoton(void*) {
+  for (;;) {
+    sondearBoton();
+    vTaskDelay(pdMS_TO_TICKS(5));
+  }
+}
+
 void begin() {
   pinMode(PIN_ENC_A, INPUT_PULLUP);
   pinMode(PIN_ENC_B, INPUT_PULLUP);
@@ -61,7 +77,15 @@ void begin() {
   attachInterrupt(digitalPinToInterrupt(PIN_ENC_B), onEncoderEdge, CHANGE);
 
   lastActivityMs = millis();
+
+  // Nucleo 0: el bucle de Arduino vive en el 1.
+  xTaskCreatePinnedToCore(tareaBoton, "knob", 2048, nullptr, 2, nullptr, 0);
 }
+
+// Ya no hace nada: el sondeo corre en su propia tarea. Se deja para no obligar
+// al resto del firmware a cambiar, y porque el dia que se quiera volver al
+// modelo de un solo nucleo basta con llamar aqui a sondearBoton().
+void update() {}
 
 // Estado del boton a nivel de archivo: holdMs() necesita verlo desde fuera.
 static bool     pressed    = false;
@@ -79,7 +103,7 @@ uint32_t holdMs() {
   return millis() - downMs;
 }
 
-void update() {
+static void sondearBoton() {
   bool now = (digitalRead(PIN_ENC_SW) == LOW);
   uint32_t t = millis();
 

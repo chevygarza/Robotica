@@ -11,9 +11,11 @@
 #include <Arduino.h>
 #include "knob.h"
 
-enum AppState : uint8_t { ST_SELECTOR = 0, ST_PLAYING, ST_ALARMA };
+enum AppState : uint8_t { ST_SELECTOR = 0, ST_PLAYING, ST_ALARMA, ST_AJUSTES };
 
 bool      app_begin();
 void      app_event(KnobEvent e);
 void      app_tick();
 AppState  app_state();
+uint8_t   app_bl_dbg();
+bool      app_sonando_dbg();

@@ -79,16 +79,7 @@ static void flush_cb(lv_disp_drv_t* disp, const lv_area_t* area, lv_color_t* px)
   lv_disp_flush_ready(disp);
 }
 
-static void touch_cb(lv_indev_drv_t* drv, lv_indev_data_t* data) {
-  if (touch.available() && !(touch.x == 0 && touch.y == 0)) {
-    data->state   = LV_INDEV_STATE_PR;
-    data->point.x = touch.x;
-    data->point.y = touch.y;
-    touchFlag = true;
-  } else {
-    data->state = LV_INDEV_STATE_REL;
-  }
-}
+
 
 // ─── Backlight ───────────────────────────────────────────────────────────────
 #define BL_CHANNEL    0
@@ -131,6 +122,7 @@ bool display_begin() {
   gfx.init();
   gfx.initDMA();
   gfx.startWrite();
+
   gfx.fillScreen(TFT_BLACK);
 
   // 3) Tactil en el bus 0 remapeado a 6/7.
@@ -157,11 +149,10 @@ bool display_begin() {
   disp_drv.draw_buf = &draw_buf;
   lv_disp_drv_register(&disp_drv);
 
-  static lv_indev_drv_t indev_drv;
-  lv_indev_drv_init(&indev_drv);
-  indev_drv.type    = LV_INDEV_TYPE_POINTER;
-  indev_drv.read_cb = touch_cb;
-  lv_indev_drv_register(&indev_drv);
+  // El tactil NO se registra en LVGL a proposito: un deslizamiento arrastraba
+  // los objetos de la pantalla. La perilla es la unica entrada del aparato; el
+  // tactil solo sirve para despertar, y eso se consulta aparte en
+  // display_touched(), sin pasar por LVGL.
 
   return true;
 }
@@ -191,6 +182,9 @@ uint8_t display_backlight_level() { return blCur; }
 bool    display_backlight_busy()  { return blDur != 0; }
 
 bool display_touched() {
+  // Se consulta el chip directo, sin LVGL de por medio. Solo interesa saber
+  // que alguien toco, para despertar; ni la posicion ni el gesto importan.
+  if (touch.available() && !(touch.x == 0 && touch.y == 0)) touchFlag = true;
   bool t = touchFlag;
   touchFlag = false;
   return t;

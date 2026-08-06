@@ -39,7 +39,9 @@ IMG_EXT   = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 JUNK      = {".DS_Store", ".Spotlight-V100", ".fseventsd", ".Trashes", "._.Trashes"}
 
 ORIGEN   = "_origen"
-LABEL_PX = 172           # debe coincidir con VINYL_LABEL_D en vinyl.h
+# La caratula se genera al tamano del DISCO, no de la etiqueta: en la
+# biblioteca ocupa el disco completo. Debe coincidir con VINYL_DISC_D.
+LABEL_PX = 336
 
 # Paleta de respaldo para carpetas sin caratula ni color declarado.
 PALETA = [0x1DB954, 0x3A6FD8, 0xC8791E, 0xB5476B, 0x2FA8A0, 0x8A63D2,
@@ -47,6 +49,12 @@ PALETA = [0x1DB954, 0x3A6FD8, 0xC8791E, 0xB5476B, 0x2FA8A0, 0x8A63D2,
 
 FQBN = ("esp32:esp32:esp32s3:PSRAM=opi,FlashSize=16M,"
         "PartitionScheme=huge_app,USBMode=hwcdc,CDCOnBoot=cdc")
+
+# Particion propia: 8MB para la aplicacion en vez de los 3MB de huge_app. Con
+# 220KB por caratula, 3MB topaban en nueve discos. El archivo vive en
+# <core esp32>/tools/partitions/vnl1_8M.csv
+BUILD_PROPS = ["--build-property", "build.partitions=vnl1_8M",
+               "--build-property", "upload.maximum_size=8388608"]
 
 
 # ── Utilidades ───────────────────────────────────────────────────────────────
@@ -58,11 +66,25 @@ def es_util(p: Path) -> bool:
 
 
 def limpiar_basura(root: Path) -> int:
+    """Borra la metadata invisible de macOS, tolerando lo que no se deje.
+
+    Algunos archivos de sistema (._.Spotlight-V100 y compania) estan
+    protegidos y no se pueden eliminar ni con permisos. No importan: el
+    DFPlayer los ignora igual. Lo que no se puede borrar se salta, en vez de
+    tumbar todo el proceso por un archivo irrelevante.
+    """
     n = 0
     for p in sorted(root.rglob("*"), key=lambda x: -len(x.parts)):
-        if p.name in JUNK or p.name.startswith("._"):
-            shutil.rmtree(p, ignore_errors=True) if p.is_dir() else p.unlink(missing_ok=True)
+        if not (p.name in JUNK or p.name.startswith("._")):
+            continue
+        try:
+            if p.is_dir():
+                shutil.rmtree(p, ignore_errors=True)
+            else:
+                p.unlink()
             n += 1
+        except (PermissionError, OSError):
+            pass          # protegido por el sistema: se queda y no estorba
     return n
 
 
@@ -114,6 +136,24 @@ def c_str(s: str) -> str:
     return s.translate(t).encode("ascii", "replace").decode().replace('"', "'")
 
 
+def firma(files):
+    """Huella de lo que hay en la carpeta: nombres y tamanos, en orden."""
+    return "\n".join(f"{f.name}\t{f.stat().st_size}" for f in files)
+
+
+def ya_convertido(d: Path, odir: Path, files) -> bool:
+    """True si las pistas convertidas siguen correspondiendo al origen.
+
+    Convertir audio es lo lento del proceso, y casi siempre lo unico que
+    cambia es una caratula. Se guarda una huella de los archivos fuente y, si
+    coincide y los destinos existen, se salta la conversion.
+    """
+    marca = d / ".sync"
+    if not marca.is_file() or marca.read_text() != firma(files):
+        return False
+    return all((odir / f"{i:03d}.mp3").is_file() for i in range(1, len(files) + 1))
+
+
 def duration_s(path: Path) -> int:
     out = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration",
@@ -131,13 +171,51 @@ def convert(src: Path, dst: Path):
 
 
 # ── Caratulas ────────────────────────────────────────────────────────────────
+def paleta_anillo(im, n=8):
+    """Un color por LED, tomado del sector de la caratula que le queda detras.
+
+    Se promedia solo el anillo exterior de la imagen (del 45% al 95% del radio)
+    porque es la zona que el LED tiene enfrente. Despues se le sube saturacion
+    y luminosidad: un color fiel puede ser muy oscuro, y un LED oscuro no
+    alumbra — es lo que le paso a la primera portada de Zelda.
+    """
+    import colorsys, math
+    W = im.size[0]
+    px = im.load()
+    c = W / 2.0
+    acc = [[0, 0, 0, 0] for _ in range(n)]
+    for y in range(0, W, 2):
+        for x in range(0, W, 2):
+            dx, dy = x - c, y - c
+            r = math.hypot(dx, dy)
+            if r < c * 0.45 or r > c * 0.95:
+                continue
+            # El sector 0 arranca arriba y avanza en sentido horario.
+            ang = (math.degrees(math.atan2(dy, dx)) + 90.0) % 360.0
+            k = int(ang * n / 360.0) % n
+            pr, pg, pb = px[x, y]
+            acc[k][0] += pr; acc[k][1] += pg; acc[k][2] += pb; acc[k][3] += 1
+
+    out = []
+    for r_, g_, b_, cnt in acc:
+        if cnt == 0:
+            out.append(0xFFFFFF); continue
+        r_, g_, b_ = r_ / cnt / 255, g_ / cnt / 255, b_ / cnt / 255
+        h, sat, val = colorsys.rgb_to_hsv(r_, g_, b_)
+        sat = max(sat, 0.60)
+        val = max(val, 0.80)
+        r_, g_, b_ = colorsys.hsv_to_rgb(h, sat, val)
+        out.append((int(r_ * 255) << 16) | (int(g_ * 255) << 8) | int(b_ * 255))
+    return out
+
+
 def process_cover(img_path: Path):
-    """Devuelve (color_dominante, lista_rgb565) o (None, None)."""
+    """Devuelve (color_dominante, pixeles_rgb565, paleta_del_anillo)."""
     try:
         from PIL import Image
     except ImportError:
         print("      (sin Pillow: no puedo procesar la caratula)")
-        return None, None
+        return None, None, None
 
     im = Image.open(img_path)
     # Un PNG con transparencia no se puede convertir a RGB de golpe: eso tira
@@ -178,9 +256,11 @@ def process_cover(img_path: Path):
     if mejor is None:
         mejor = im.resize((1, 1), Image.LANCZOS).getpixel((0, 0))
 
-    rgb565 = [((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
-              for r, g, b in im.getdata()]
-    return (mejor[0] << 16) | (mejor[1] << 8) | mejor[2], rgb565
+    raw = im.tobytes()
+    rgb565 = [((raw[i] & 0xF8) << 8) | ((raw[i + 1] & 0xFC) << 3) | (raw[i + 2] >> 3)
+              for i in range(0, len(raw), 3)]
+    return ((mejor[0] << 16) | (mejor[1] << 8) | mejor[2], rgb565,
+            paleta_anillo(im))
 
 
 # ── Salidas ──────────────────────────────────────────────────────────────────
@@ -206,18 +286,25 @@ def write_albums_h(path: Path, manifest):
          "  const uint16_t* track_seconds;  // duracion de cada pista",
          "  uint32_t        color;",
          "  const uint16_t* cover;          // nullptr = etiqueta dibujada",
+         "  const uint32_t* anillo;         // 8 colores, uno por LED",
          "};",
          ""]
     for a in manifest:
         d = a["durations"] or [0]
         L.append(f"static const uint16_t TRACKS_{a['folder']:02d}[] = "
                  f"{{ {', '.join(str(x) for x in d)} }};")
+    L.append("")
+    for a in manifest:
+        if a.get("anillo"):
+            L.append(f"static const uint32_t RING_{a['folder']:02d}[8] = {{ "
+                     + ", ".join(f"0x{c:06X}" for c in a["anillo"]) + " };")
     L += ["", "static const Album ALBUMS[] = {"]
     for a in manifest:
         cover = f"COVER_{a['folder']:02d}" if a["cover"] else "nullptr"
         L.append(f'  {{ {a["folder"]}, "{a["name"]}", "{a["subtitle"]}", '
                  f'{len(a["durations"])}, {sum(a["durations"])}, '
-                 f'TRACKS_{a["folder"]:02d}, 0x{a["color"]:06X}, {cover} }},')
+                 f'TRACKS_{a["folder"]:02d}, 0x{a["color"]:06X}, {cover}, '
+                 f'{("RING_%02d" % a["folder"]) if a.get("anillo") else "nullptr"} }},')
     L += ["};", "",
           "static const uint8_t ALBUM_COUNT = sizeof(ALBUMS) / sizeof(ALBUMS[0]);",
           ""]
@@ -225,6 +312,12 @@ def write_albums_h(path: Path, manifest):
 
 
 def write_covers_h(path: Path, manifest):
+    """Escribe covers.h (declaraciones) y covers.cpp (datos, una sola vez).
+
+    Separadas a proposito: un arreglo "static" en una cabecera se duplica en
+    cada .cpp que la incluye. Con dos archivos incluyendola, cada caratura
+    ocupaba el doble de flash.
+    """
     L = ["// VNL-1 — Caratulas convertidas a pixeles.",
          "//",
          "// GENERADO por sd/prepare_sd.py. NO editar a mano.",
@@ -235,15 +328,20 @@ def write_covers_h(path: Path, manifest):
          "",
          f"#define COVER_PX {LABEL_PX}",
          ""]
+    C = ['// VNL-1 — Definicion UNICA de las caratulas. GENERADO, no editar.',
+         '#include "covers.h"', '']
     for a in manifest:
         if not a["cover"]:
             continue
-        L.append(f"static const uint16_t COVER_{a['folder']:02d}[] = {{")
+        L.append(f"extern const uint16_t COVER_{a['folder']:02d}[];")
+        C.append(f"const uint16_t COVER_{a['folder']:02d}[] = {{")
         datos = a["cover"]
         for i in range(0, len(datos), 16):
-            L.append("  " + ",".join(f"0x{v:04X}" for v in datos[i:i + 16]) + ",")
-        L += ["};", ""]
+            C.append("  " + ",".join(f"0x{v:04X}" for v in datos[i:i + 16]) + ",")
+        C += ["};", ""]
+    L.append("")
     path.write_text("\n".join(L))
+    path.with_suffix(".cpp").write_text("\n".join(C))
 
 
 # ── Principal ────────────────────────────────────────────────────────────────
@@ -291,12 +389,14 @@ def main():
         print(f"No hay discos en {ORIGEN}. Crea uno asi:  {ORIGEN}/01 FIFA/")
         return 0
 
-    # Las carpetas numericas se rehacen desde cero: si quitaste un disco del
-    # origen tiene que desaparecer tambien de la tarjeta, o el manifiesto deja
-    # de cuadrar con lo que el DFPlayer ve.
+    # Solo se borran las carpetas numericas que ya NO tienen origen: si quitaste
+    # un disco tiene que desaparecer de la tarjeta o el manifiesto deja de
+    # cuadrar. Las que siguen vivas se dejan, para no obligar a reconvertir.
+    vivos = {f"{n:02d}" for n, _, _ in carpetas}
     if not args.dry_run:
         for p in sorted(card.iterdir()):
-            if p.is_dir() and re.fullmatch(r"\d{2}", p.name):
+            if p.is_dir() and re.fullmatch(r"\d{2}", p.name) and p.name not in vivos:
+                print(f"tarjeta: sobra la carpeta {p.name}, la quito")
                 shutil.rmtree(p, ignore_errors=True)
 
     manifest = []
@@ -309,19 +409,29 @@ def main():
 
         durations = []
         odir = card / f"{num:02d}"
+        files = files[:255]
         if not args.dry_run:
             odir.mkdir(parents=True, exist_ok=True)
 
-        # Uno por uno y en orden: el DFPlayer sigue la tabla FAT, no los nombres.
-        for i, f in enumerate(files[:255], start=1):
-            if args.dry_run:
-                dur = duration_s(f)
-            else:
-                target = odir / f"{i:03d}.mp3"
-                convert(f, target)
-                dur = duration_s(target)
-            durations.append(dur)
-            print(f"      {i:03d}.mp3  {dur//60}:{dur%60:02d}  {f.name[:42]}")
+        saltar = (not args.dry_run) and ya_convertido(d, odir, files)
+        if saltar:
+            for i in range(1, len(files) + 1):
+                durations.append(duration_s(odir / f"{i:03d}.mp3"))
+            print(f"      musica sin cambios, no se reconvierte")
+        else:
+            # Uno por uno y en orden: el DFPlayer sigue la tabla FAT, no los
+            # nombres de archivo.
+            for i, f in enumerate(files, start=1):
+                if args.dry_run:
+                    dur = duration_s(f)
+                else:
+                    target = odir / f"{i:03d}.mp3"
+                    convert(f, target)
+                    dur = duration_s(target)
+                durations.append(dur)
+                print(f"      {i:03d}.mp3  {dur//60}:{dur%60:02d}  {f.name[:42]}")
+            if not args.dry_run and files:
+                (d / ".sync").write_text(firma(files))
 
         if durations:
             tot = sum(durations)
@@ -329,13 +439,17 @@ def main():
         else:
             print("      (sin musica todavia)")
 
-        color, cover = None, None
-        imgs = [p for p in d.iterdir()
-                if p.suffix.lower() in IMG_EXT and es_util(p)]
+        color, cover, anillo = None, None, None
+        # Prioriza el archivo llamado "cover": en las carpetas suelen quedar
+        # miniaturas que se bajaron con la musica, y por orden alfabetico una
+        # de esas le ganaria a la portada de verdad.
+        imgs = sorted([p for p in d.iterdir()
+                       if p.suffix.lower() in IMG_EXT and es_util(p)],
+                      key=lambda p: (p.stem.lower() != "cover", p.name.lower()))
         if imgs:
-            color, cover = process_cover(sorted(imgs)[0])
+            color, cover, anillo = process_cover(imgs[0])
             if color is not None:
-                print(f"      caratula {sorted(imgs)[0].name[:26]} -> 0x{color:06X}")
+                print(f"      caratula {imgs[0].name[:26]} -> 0x{color:06X}")
         if "color" in meta:
             color = int(meta["color"], 16)
         if color is None:
@@ -348,6 +462,7 @@ def main():
             "durations": durations,
             "color": color,
             "cover": cover,
+            "anillo": anillo,
         })
 
     if not args.dry_run:
@@ -367,7 +482,7 @@ def main():
             return 0
         print(f"\nCompilando y flasheando en {ports[0]} ...\n")
         r = subprocess.run(["arduino-cli", "compile", "--upload", "-p", ports[0],
-                            "--fqbn", FQBN, str(fw)])
+                            "--fqbn", FQBN] + BUILD_PROPS + [str(fw)])
         print("\nListo." if r.returncode == 0 else "\nFallo el flasheo.")
     return 0
 

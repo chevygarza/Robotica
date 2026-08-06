@@ -40,6 +40,16 @@ static uint8_t  volume     = 20;
 static bool     playing    = false;
 static uint32_t trackStart = 0;
 static uint32_t pausedAt   = 0;
+static bool     albumFin   = false;
+
+// Arranque suave. Al empezar una pista el amplificador pide un golpe de
+// corriente proporcional al volumen, y con fuente floja eso hunde el riel de
+// 5V y reinicia el ESP32. Arrancar casi mudo y subir en medio segundo quita
+// el pico sin que el oido note el arranque.
+#define RAMPA_PASO_MS   110
+#define RAMPA_INICIO      4
+static uint8_t  volRampa   = 0;      // 0 = sin rampa en curso
+static uint32_t rampaMs    = 0;
 
 static void shuffle(uint8_t tracks) {
   if (tracks > sizeof(order)) tracks = sizeof(order);
@@ -90,7 +100,10 @@ static void sendNext() {
   qTail = (qTail + 1) % QLEN;
 
   switch (c.kind) {
-    case CMD_PLAY_FOLDER: df.playFolder(c.a, c.b); break;
+    case CMD_PLAY_FOLDER:
+      Serial.printf("[audio] envio playFolder(%d, %d)\n", c.a, c.b);
+      df.playFolder(c.a, c.b);
+      break;
     case CMD_PAUSE:       df.pause();              break;
     case CMD_RESUME:      df.start();              break;
     case CMD_STOP:        df.stop();               break;
@@ -102,6 +115,15 @@ static void sendNext() {
 
 static void playCurrent() {
   if (!orderCount) return;
+  // Baja el volumen ANTES de pedir la pista: el orden importa, si se manda
+  // despues el golpe ya ocurrio.
+  if (volume > RAMPA_INICIO) {
+    volRampa = RAMPA_INICIO;
+    enqueue(CMD_VOLUME, RAMPA_INICIO);
+    rampaMs = millis();
+  }
+  Serial.printf("[audio] pido /%02d/%03d.mp3  (pista %d de %d)\n",
+                curFolder, order[orderPos], orderPos + 1, orderCount);
   enqueue(CMD_PLAY_FOLDER, curFolder, order[orderPos]);
   trackStart = millis();
   playing = true;
@@ -110,13 +132,30 @@ static void playCurrent() {
 void player_tick() {
   if (!ready) return;
 
+  // Rampa de arranque: sube de a poco hasta el volumen que pidio la UI.
+  if (volRampa && millis() - rampaMs >= RAMPA_PASO_MS) {
+    rampaMs = millis();
+    int16_t v = (int16_t)volRampa + 4;
+    if (v >= volume) { v = volume; volRampa = 0; }
+    else             { volRampa = (uint8_t)v; }
+    enqueue(CMD_VOLUME, (uint8_t)v);
+  }
+
   if (millis() - lastSentMs >= PLAYER_MIN_GAP_MS) sendNext();
 
   // El modulo avisa cuando termina una pista: ahi avanzamos en el barajado.
   if (df.available()) {
     uint8_t type = df.readType();
     if (type == DFPlayerPlayFinished) {
-      player_next();
+      // Avance automatico: si era la ultima, no se reinicia solo — se avisa.
+      if (orderPos + 1 >= orderCount) {
+        albumFin = true;
+        playing  = false;
+        Serial.println("[audio] se acabo el album");
+      } else {
+        orderPos++;
+        playCurrent();
+      }
     } else if (type == DFPlayerError) {
       Serial.printf("DFPlayer error: %d\n", df.read());
     }
@@ -125,6 +164,7 @@ void player_tick() {
 
 void player_play_album(uint8_t folder, uint8_t tracks) {
   if (!ready) return;
+  albumFin = false;
   curFolder = folder;
   shuffle(tracks);
   playCurrent();
@@ -155,17 +195,24 @@ void player_stop() {
 
 bool player_playing() { return playing; }
 
+// Salto manual (doble push): aqui si da la vuelta, porque lo pidio una mano.
 void player_next() {
   if (!ready || !orderCount) return;
   orderPos = (orderPos + 1) % orderCount;
-  // Al dar la vuelta se rebaraja: dos pasadas seguidas no repiten el orden.
   if (orderPos == 0) shuffle(orderCount);
   playCurrent();
+}
+
+bool player_album_fin() {
+  bool f = albumFin;
+  albumFin = false;
+  return f;
 }
 
 void player_set_volume(uint8_t vol) {
   if (vol > PLAYER_VOL_MAX) vol = PLAYER_VOL_MAX;
   volume = vol;
+  volRampa = 0;            // si el usuario gira la perilla, manda el usuario
   if (ready) enqueue(CMD_VOLUME, vol);
 }
 

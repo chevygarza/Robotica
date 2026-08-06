@@ -6,6 +6,8 @@
 #include "display.h"
 #include "netclock.h"
 #include "alarm.h"
+#include "settings.h"
+#include "battery.h"
 #include <Adafruit_NeoPixel.h>
 
 #define MAX_DOTS       16
@@ -14,18 +16,29 @@
 #define VOL_STEP        1
 #define HOLD_SHOW_MS  140    // a partir de aqui se ve el aro de "mantener"
 
-// Reposo: a los 30s sin tocar nada, la pantalla se retira. Si hay musica no se
-// apaga del todo — bajarla a la mitad deja ver que sigue sonando sin alumbrar
-// el cuarto. Si no hay musica, no hay nada que mirar y se apaga completa.
-#define IDLE_MS     30000
-#define DIM_PCT        50
+// Reposo. Los valores de arranque cambiaron tras vivir con el aparato: 30
+// segundos y apagado total se leia como aparato descompuesto, no como aparato
+// dormido — pasa que lo miras, esta negro, y crees que se colgo.
+//
+// Ahora tarda mas en retirarse y nunca se apaga del todo: en reposo queda un
+// resplandor bajo que dice "aqui estoy". Los tres valores seran ajustables
+// desde la pantalla de Ajustes.
+#define IDLE_MS    180000    // 3 minutos
+#define DIM_PCT         50   // con musica
+#define REPOSO_PCT      12   // sin musica: tenue, pero vivo
 
 // La alarma es un disco mas al final de la fila. No es un menu escondido ni un
 // gesto secreto: se llega girando, igual que a cualquier album.
-#define ITEM_COUNT   (ALBUM_COUNT + 1)
-#define ES_ALARMA(i) ((i) >= ALBUM_COUNT)
-#define COLOR_ALARMA 0x6C7A89
-#define CAMPOS         5
+// Dos discos especiales al final de la fila: alarma y ajustes. Ninguno es un
+// menu escondido — se llega girando, igual que a cualquier album.
+#define ITEM_COUNT    (ALBUM_COUNT + 2)
+#define ES_ALARMA(i)  ((i) == ALBUM_COUNT)
+#define ES_AJUSTES(i) ((i) == ALBUM_COUNT + 1)
+#define ES_ESPECIAL(i) ((i) >= ALBUM_COUNT)
+#define COLOR_ALARMA  0x6C7A89
+#define COLOR_AJUSTES 0x9AA0A6
+#define CAMPOS          5     // alarma
+#define AJ_CAMPOS       7     // ajustes
 
 static Adafruit_NeoPixel ring(NUM_LEDS, PIN_RGB_DIN, NEO_GRB + NEO_KHZ800);
 
@@ -51,10 +64,7 @@ static bool     alarmaSonando = false;
 static lv_obj_t* selBox   = nullptr;   // info del disco mientras hojeas
 static lv_obj_t* selName  = nullptr;
 static lv_obj_t* selMeta  = nullptr;
-static lv_obj_t* fondo    = nullptr;   // plinto de madera
-static lv_color_t* fondoBuf = nullptr;
 static lv_obj_t* playBox  = nullptr;
-static lv_obj_t* dots[MAX_DOTS] = { nullptr };
 static lv_obj_t* timeLbl  = nullptr;
 static lv_obj_t* volBox   = nullptr;
 static lv_obj_t* volArc   = nullptr;
@@ -63,6 +73,11 @@ static lv_obj_t* holdArc  = nullptr;   // progreso del mantener
 static lv_obj_t* alarmBox = nullptr;
 static lv_obj_t* alRot[CAMPOS] = { nullptr };
 static lv_obj_t* alVal[CAMPOS] = { nullptr };
+static lv_obj_t* ajBox    = nullptr;
+static lv_obj_t* ajRot[AJ_CAMPOS] = { nullptr };
+static lv_obj_t* ajVal[AJ_CAMPOS] = { nullptr };
+static lv_obj_t* ajBat    = nullptr;   // lectura de la celda, solo informativa
+static lv_obj_t* halo     = nullptr;   // resplandor del album, solo al tocar
 static lv_obj_t* vecinoIzq = nullptr;  // discos de al lado, solo en biblioteca
 static lv_obj_t* vecinoDer = nullptr;
 
@@ -141,12 +156,20 @@ static void refreshVecinos() {
   bool hay = ITEM_COUNT > 1;
   uint8_t izq = (uint8_t)((album + ITEM_COUNT - 1) % ITEM_COUNT);
   uint8_t der = (uint8_t)((album + 1) % ITEM_COUNT);
-  lv_obj_set_style_bg_color(vecinoIzq, lv_color_hex(
-      ES_ALARMA(izq) ? COLOR_ALARMA : ALBUMS[izq].color), 0);
-  lv_obj_set_style_bg_color(vecinoDer, lv_color_hex(
-      ES_ALARMA(der) ? COLOR_ALARMA : ALBUMS[der].color), 0);
-  fadeTo(vecinoIzq, hay ? 225 : 0, 240);
-  fadeTo(vecinoDer, hay ? 225 : 0, 240);
+  auto colorDe = [](uint8_t i) -> uint32_t {
+    if (ES_AJUSTES(i)) return COLOR_AJUSTES;
+    if (ES_ALARMA(i))  return COLOR_ALARMA;
+    return ALBUMS[i].color;
+  };
+  lv_obj_set_style_bg_color(vecinoIzq, lv_color_hex(colorDe(izq)), 0);
+  lv_obj_set_style_bg_color(vecinoDer, lv_color_hex(colorDe(der)), 0);
+  // Si ya estan a la vista, basta con cambiarles el color: lanzar una
+  // animacion por muesca solo agrega trabajo y se siente como arrastre.
+  for (lv_obj_t* v : { vecinoIzq, vecinoDer }) {
+    if (!hay) { fadeTo(v, 0, 240); continue; }
+    if (lv_obj_has_flag(v, LV_OBJ_FLAG_HIDDEN)) fadeTo(v, 225, 240);
+    else lv_obj_set_style_opa(v, 225, 0);
+  }
 }
 
 // ── Contenido ────────────────────────────────────────────────────────────────
@@ -157,35 +180,19 @@ static void fmtTime(char* out, size_t n, uint32_t secs) {
 
 // La info del disco vive en el selector, no en una pantalla aparte: se lee
 // mientras hojeas y no cuesta un push extra.
-// El plinto: la madera sobre la que descansa el disco. Se dibuja UNA vez.
-// Veta horizontal tenue y viNeta hacia el borde, para que el vinilo se recorte
-// contra algo con cuerpo en vez de flotar en negro.
-static void drawFondo() {
-  lv_canvas_fill_bg(fondo, lv_color_hex(0x5A3E28), LV_OPA_COVER);
-
-  lv_draw_line_dsc_t ln;
-  lv_draw_line_dsc_init(&ln);
-  ln.width = 1;
-
-  uint32_t rnd = 0x1234ABCD;                 // veta reproducible, no aleatoria
-  for (lv_coord_t y = 0; y < 360; y++) {
-    rnd = rnd * 1664525u + 1013904223u;
-    uint8_t v = (rnd >> 16) & 0x1F;
-    if (v > 22) continue;                    // no todas las lineas llevan veta
-    ln.color = (v & 1) ? lv_color_hex(0x7A5636) : lv_color_hex(0x3E2A1B);
-    ln.opa   = (lv_opa_t)(30 + (v & 7) * 12);
-    lv_point_t p[2] = { {0, y}, {359, y} };
-    lv_canvas_draw_line(fondo, p, 2, &ln);
+// El disco se pinta UNA vez por cambio. Antes lo hacian dos caminos distintos
+// y con caratula eso se sentia como que la perilla se atoraba.
+static void refreshDisco(bool animate) {
+  if (ES_AJUSTES(album)) {
+    vinyl_set_custom("AJUSTES", "del aparato", COLOR_AJUSTES, animate);
+    return;
   }
-
-  // ViNeta: oscurece hacia afuera para que la esquina redonda no compita.
-  lv_draw_arc_dsc_t v;
-  lv_draw_arc_dsc_init(&v);
-  v.color = lv_color_black();
-  v.width = 3;
-  for (lv_coord_t r = 148; r < 182; r += 2) {
-    v.opa = (lv_opa_t)(((r - 148) * 150) / 34);
-    lv_canvas_draw_arc(fondo, 180, 180, r, 0, 360, &v);
+  if (ES_ALARMA(album)) {
+    AlarmCfg& c = alarm_cfg();
+    vinyl_set_custom("ALARMA", c.activa ? "activada" : "apagada",
+                     COLOR_ALARMA, animate);
+  } else {
+    vinyl_set_album(album, animate);
   }
 }
 
@@ -202,12 +209,18 @@ static void refreshSelMeta() {
     else                snprintf(t, sizeof(t), "%02d:%02d\nson las %s",
                                  c.hora, c.minuto, hhmm);
     lv_label_set_text(selMeta, t);
-    vinyl_set_custom("ALARMA", c.activa ? "activada" : "apagada",
-                     COLOR_ALARMA, false);
+    return;
+  }
+  if (ES_AJUSTES(album)) {
+    Ajustes& j = ajustes();
+    lv_label_set_text(selName, "AJUSTES");
+    char t[64], r[24];
+    aj_texto_reposo(r, sizeof(r), j.reposoMin);
+    snprintf(t, sizeof(t), "Reposo %s\nLEDs %s", r, j.leds ? "si" : "no");
+    lv_label_set_text(selMeta, t);
     return;
   }
   const Album& a = ALBUMS[album];
-  vinyl_set_album(album, false);
   lv_label_set_text(selName, a.name);
   char t[48];
   if (a.tracks == 0) {
@@ -215,37 +228,15 @@ static void refreshSelMeta() {
   } else {
     unsigned min = (a.seconds + 30) / 60;
     snprintf(t, sizeof(t), "%u %s\n%u %s", a.tracks,
-             a.tracks == 1 ? "cancion" : "canciones",
-             min, min == 1 ? "minuto" : "minutos");
+             a.tracks == 1 ? "Cancion" : "Canciones",
+             min, min == 1 ? "Minuto" : "Minutos");
   }
   lv_label_set_text(selMeta, t);
 }
 
-// Los puntos se colocan una vez por album: uno por cancion, arrancando arriba.
-static void layoutDots(uint8_t n) {
-  if (n > MAX_DOTS) n = MAX_DOTS;
-  for (uint8_t i = 0; i < MAX_DOTS; i++) {
-    if (!dots[i]) continue;
-    if (i >= n) { lv_obj_add_flag(dots[i], LV_OBJ_FLAG_HIDDEN); continue; }
-    lv_obj_clear_flag(dots[i], LV_OBJ_FLAG_HIDDEN);
-    float ang = (-90.0f + 360.0f * i / n) * PI / 180.0f;
-    lv_obj_set_pos(dots[i], (lv_coord_t)(180 + DOT_R * cosf(ang)) - 3,
-                            (lv_coord_t)(180 + DOT_R * sinf(ang)) - 3);
-  }
-}
-
 static void refreshDots() {
-  uint8_t n = ALBUMS[album].tracks;
-  for (uint8_t i = 0; i < MAX_DOTS && i < n; i++) {
-    if (!dots[i]) continue;
-    bool played  = (trackIx > 0 && i < trackIx - 1);
-    bool current = (trackIx > 0 && i == trackIx - 1);
-    lv_obj_set_style_bg_color(dots[i],
-        current ? lv_color_hex(ALBUMS[album].color) : lv_color_white(), 0);
-    lv_obj_set_style_bg_opa(dots[i], current ? LV_OPA_COVER
-                                             : (played ? 120 : 40), 0);
-    lv_obj_set_size(dots[i], current ? 8 : 6, current ? 8 : 6);
-  }
+  vinyl_set_dots(ES_ESPECIAL(album) ? 0 : ALBUMS[album].tracks, trackIx,
+                 ES_ESPECIAL(album) ? 0xFFFFFF : ALBUMS[album].color);
 }
 
 // ── Alarma ───────────────────────────────────────────────────────────────────
@@ -272,9 +263,54 @@ static void refreshAlarma() {
     lv_color_t colVal = (sel && editando) ? lv_color_hex(0xD4A017)
                                           : lv_color_white();
     lv_obj_set_style_text_color(alVal[i], colVal, 0);
-    lv_obj_set_style_text_opa(alVal[i], sel ? LV_OPA_COVER : 90, 0);
-    lv_obj_set_style_text_opa(alRot[i], sel ? 200 : 70, 0);
+    lv_obj_set_style_text_opa(alVal[i], sel ? LV_OPA_COVER : 175, 0);
+    lv_obj_set_style_text_opa(alRot[i], sel ? 235 : 150, 0);
   }
+}
+
+static const char* AJ_ROT[AJ_CAMPOS] = { "Al terminar", "Reposo", "Luz reposo",
+                                         "Luz musica", "Brillo", "LEDs",
+                                         "Brillo LEDs" };
+
+static void refreshAjustes() {
+  Ajustes& j = ajustes();
+
+  // Solo lectura: no es un campo, es informacion. Por eso vive bajo el titulo
+  // y no en la lista que se recorre con la perilla.
+  char b[40];
+  if (bat_presente()) snprintf(b, sizeof(b), "Bateria %u%%   %u.%02u V",
+                               bat_pct(), bat_mv() / 1000, (bat_mv() % 1000) / 10);
+  else                snprintf(b, sizeof(b), "sin bateria");
+  lv_label_set_text(ajBat, b);
+  char v[32];
+  for (uint8_t i = 0; i < AJ_CAMPOS; i++) {
+    switch (i) {
+      case 0: snprintf(v, sizeof(v), "%s", aj_texto_fin(j.alFin)); break;
+      case 1: aj_texto_reposo(v, sizeof(v), j.reposoMin); break;
+      case 2: snprintf(v, sizeof(v), "%u%%", j.luzReposo); break;
+      case 3: snprintf(v, sizeof(v), "%u%%", j.luzMusica); break;
+      case 4: snprintf(v, sizeof(v), "%u%%", j.brillo);    break;
+      case 5: snprintf(v, sizeof(v), "%s", j.leds ? "si" : "no"); break;
+      default: snprintf(v, sizeof(v), "%u%%", j.brilloLeds);
+    }
+    lv_label_set_text(ajVal[i], v);
+    bool sel = (i == campo);
+    lv_obj_set_style_text_color(ajVal[i], (sel && editando)
+        ? lv_color_hex(0xD4A017) : lv_color_white(), 0);
+    lv_obj_set_style_text_opa(ajVal[i], sel ? LV_OPA_COVER : 175, 0);
+    lv_obj_set_style_text_opa(ajRot[i], sel ? 235 : 150, 0);
+  }
+}
+
+static void goAjustes() {
+  st = ST_AJUSTES;
+  campo = 0;
+  editando = false;
+  refreshAjustes();
+  fadeTo(selBox, 0, 180);
+  fadeTo(vecinoIzq, 0, 180);
+  fadeTo(vecinoDer, 0, 180);
+  fadeTo(ajBox, 255, 280);
 }
 
 static void goAlarma() {
@@ -303,7 +339,6 @@ static void startAlbum() {
   pausedAt = 0;
   if (player_available()) player_play_album(ALBUMS[album].folder,
                                            ALBUMS[album].tracks);
-  layoutDots(ALBUMS[album].tracks);
   refreshDots();
 }
 
@@ -311,18 +346,25 @@ static void goSelector() {
   st = ST_SELECTOR;
   refreshSelMeta();
   vinyl_zoom_to(62, 420);        // la camara se aleja
+  vinyl_cover_mode(true);        // hojeando portadas
+  fadeTo(halo, 0, 400);
   refreshVecinos();
   fadeTo(selBox, 255, 260);
   fadeTo(playBox, 0, 240);
   fadeTo(volBox, 0, 160);
   // El disco frena con inercia; la musica sigue sonando.
   vinyl_set_spinning(false);
-  vinyl_set_album(album, false);
+  refreshDisco(false);
 }
 
 static void goPlaying(bool restart) {
   st = ST_PLAYING;
   vinyl_zoom_to(100, 420);       // la camara se acerca: el disco llena el cuadro
+  vinyl_cover_mode(false);       // en el plato: vuelve a ser un vinilo
+  if (!ES_ALARMA(album)) {
+    lv_obj_set_style_bg_color(halo, lv_color_hex(ALBUMS[album].color), 0);
+    fadeTo(halo, 130, 500);
+  }
   fadeTo(vecinoIzq, 0, 200);
   fadeTo(vecinoDer, 0, 200);
   fadeTo(selBox, 0, 200);
@@ -346,13 +388,19 @@ static void paintRing() {
   // El anillo sigue a la pantalla: si ella se retira, el tambien. Con la
   // pantalla apagada se corta la corriente de la tira (GPIO17), no solo el
   // brillo: un LED en brillo 0 sigue alimentado y sigue calentando.
-  if (blNivel == 0) {
+  // Los LEDs apagados por ajuste, o la pantalla en cero: en ambos casos se
+  // corta la corriente de la tira, no solo el brillo.
+  if (blNivel == 0 || !ajustes().leds) {
     ring.clear();
     ring.show();
     digitalWrite(PIN_RGB_PWR, LOW);
+    // El LED de encendido tambien: dejarlo prendido junto a una pantalla negra
+    // hace que el aparato parezca colgado en vez de dormido. Es activo en LOW.
+    digitalWrite(PIN_POWER_LED, HIGH);
     return;
   }
   digitalWrite(PIN_RGB_PWR, HIGH);
+  digitalWrite(PIN_POWER_LED, LOW);
 
   // Manda el album que SUENA, no el que estas hojeando: asi la biblioteca te
   // dice de que disco viene la musica sin necesidad de leer nada.
@@ -366,9 +414,19 @@ static void paintRing() {
   }
   // El nivel de la pantalla escala el del anillo: al 50% de brillo, la luz
   // ambiental baja igual y el objeto entero se atenua como una sola cosa.
-  uint32_t col = ES_ALARMA(src) ? COLOR_ALARMA : ALBUMS[src].color;
-  ring.setBrightness((uint8_t)((uint16_t)br * blNivel / 100));
-  for (int i = 0; i < NUM_LEDS; i++) ring.setPixelColor(i, col);
+  ring.setBrightness((uint8_t)((uint32_t)br * blNivel * ajustes().brilloLeds
+                               / 10000));
+
+  // Con caratula, cada LED toma el color del sector de la imagen que le queda
+  // detras: el anillo es un reflejo del arte, no ocho copias del mismo tono.
+  const uint32_t* pal = ES_ESPECIAL(src) ? nullptr : ALBUMS[src].anillo;
+  if (pal) {
+    for (int i = 0; i < NUM_LEDS; i++) ring.setPixelColor(i, pal[i % 8]);
+  } else {
+    uint32_t col = ES_AJUSTES(src) ? COLOR_AJUSTES
+                 : ES_ALARMA(src)  ? COLOR_ALARMA : ALBUMS[src].color;
+    for (int i = 0; i < NUM_LEDS; i++) ring.setPixelColor(i, col);
+  }
   ring.show();
 }
 
@@ -382,14 +440,18 @@ bool app_begin() {
   lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
   lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
 
-  fondoBuf = (lv_color_t*)heap_caps_malloc(
-      LV_CANVAS_BUF_SIZE_TRUE_COLOR(360, 360), MALLOC_CAP_SPIRAM);
-  if (fondoBuf) {
-    fondo = lv_canvas_create(scr);
-    lv_canvas_set_buffer(fondo, fondoBuf, 360, 360, LV_IMG_CF_TRUE_COLOR);
-    lv_obj_center(fondo);
-    drawFondo();
-  }
+
+  // Halo: un circulo del color del album, apenas mas grande que el disco. Al
+  // reproducir asoma como un borde de luz alrededor del vinilo. Es un solo
+  // objeto plano, no un lienzo: no cuesta nada por frame.
+  halo = lv_obj_create(scr);
+  lv_obj_remove_style_all(halo);
+  lv_obj_set_size(halo, 358, 358);
+  lv_obj_center(halo);
+  lv_obj_set_style_radius(halo, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_opa(halo, LV_OPA_COVER, 0);
+  lv_obj_set_style_opa(halo, LV_OPA_TRANSP, 0);
+  lv_obj_add_flag(halo, LV_OBJ_FLAG_HIDDEN);
 
   // Se crean primero para que el vinilo quede encima de ellos.
   for (int i = 0; i < 2; i++) {
@@ -410,19 +472,10 @@ bool app_begin() {
   // Titulo arriba y datos abajo, con el disco en medio: apilados los dos
   // debajo, el segundo renglon caia contra el borde redondo y se perdia.
   selName = mkLabel(selBox, &lv_font_montserrat_22, LV_OPA_COVER, 36);
-  selMeta = mkLabel(selBox, &lv_font_montserrat_16, 155, 282);
+  selMeta = mkLabel(selBox, &lv_font_montserrat_16, 155, 292);
 
   playBox = mkBox(scr);
-  for (uint8_t i = 0; i < MAX_DOTS; i++) {
-    dots[i] = lv_obj_create(playBox);
-    lv_obj_remove_style_all(dots[i]);
-    lv_obj_set_size(dots[i], 6, 6);
-    lv_obj_set_style_radius(dots[i], LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(dots[i], lv_color_white(), 0);
-    lv_obj_set_style_bg_opa(dots[i], 40, 0);
-    lv_obj_add_flag(dots[i], LV_OBJ_FLAG_HIDDEN);
-  }
-  timeLbl = mkLabel(playBox, &lv_font_montserrat_16, 190, 254);
+  timeLbl = mkLabel(playBox, &lv_font_montserrat_16, 190, 300);
   lv_label_set_text(timeLbl, "0:00");
 
   // Overlay de volumen: aro sobre el canto del disco + el numero. Aparece al
@@ -431,7 +484,7 @@ bool app_begin() {
   volArc = mkRimArc(volBox, 296, 4, 30);
   lv_arc_set_range(volArc, 0, PLAYER_VOL_MAX);
   lv_arc_set_value(volArc, vol);
-  volLbl = mkLabel(volBox, &lv_font_montserrat_20, LV_OPA_COVER, 250);
+  volLbl = mkLabel(volBox, &lv_font_montserrat_20, LV_OPA_COVER, 296);
 
   // Pantalla de la alarma: fondo propio para que el texto se lea, y filas de
   // rotulo + valor. Se navega con el mismo vocabulario de siempre.
@@ -471,6 +524,53 @@ bool app_begin() {
     }
   }
 
+  // Pantalla de Ajustes: misma estructura que la de alarma, mismo vocabulario
+  // de gestos. No hay nada nuevo que aprender.
+  ajBox = mkBox(scr);
+  {
+    lv_obj_t* velo = lv_obj_create(ajBox);
+    lv_obj_remove_style_all(velo);
+    lv_obj_set_size(velo, 360, 360);
+    lv_obj_center(velo);
+    lv_obj_set_style_radius(velo, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(velo, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(velo, 230, 0);
+
+    lv_obj_t* tit = lv_label_create(ajBox);
+    lv_obj_set_style_text_font(tit, &lv_font_montserrat_22, 0);
+    lv_obj_set_style_text_color(tit, lv_color_hex(COLOR_AJUSTES), 0);
+    lv_obj_set_style_text_align(tit, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_width(tit, 300);
+    lv_obj_set_pos(tit, 30, 40);
+    lv_label_set_text(tit, "AJUSTES");
+
+    ajBat = lv_label_create(ajBox);
+    lv_obj_set_style_text_font(ajBat, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(ajBat, lv_color_white(), 0);
+    lv_obj_set_style_text_opa(ajBat, 140, 0);
+    lv_obj_set_style_text_align(ajBat, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_width(ajBat, 300);
+    lv_obj_set_pos(ajBat, 30, 68);
+    lv_label_set_text(ajBat, "");
+
+    for (uint8_t i = 0; i < AJ_CAMPOS; i++) {
+      lv_coord_t y = 98 + i * 31;      // siete filas piden pasos mas cortos
+      ajRot[i] = lv_label_create(ajBox);
+      lv_obj_set_style_text_font(ajRot[i], &lv_font_montserrat_16, 0);
+      lv_obj_set_style_text_color(ajRot[i], lv_color_white(), 0);
+      lv_obj_set_width(ajRot[i], 130);
+      lv_obj_set_pos(ajRot[i], 52, y);
+      lv_label_set_text(ajRot[i], AJ_ROT[i]);
+
+      ajVal[i] = lv_label_create(ajBox);
+      lv_obj_set_style_text_font(ajVal[i], &lv_font_montserrat_16, 0);
+      lv_obj_set_style_text_color(ajVal[i], lv_color_white(), 0);
+      lv_obj_set_style_text_align(ajVal[i], LV_TEXT_ALIGN_RIGHT, 0);
+      lv_obj_set_width(ajVal[i], 120);
+      lv_obj_set_pos(ajVal[i], 188, y);
+    }
+  }
+
   // Aro del mantener: crece mientras sostienes y completa la vuelta justo
   // cuando el gesto se dispara. Sin esto, mantener 900ms se siente identico a
   // no hacer nada, y el usuario suelta antes de tiempo creyendo que no sirve.
@@ -480,7 +580,7 @@ bool app_begin() {
   lv_obj_set_style_opa(holdArc, LV_OPA_TRANSP, 0);
   lv_obj_add_flag(holdArc, LV_OBJ_FLAG_HIDDEN);
 
-  vinyl_set_album(album, false);
+  refreshDisco(false);
   vinyl_zoom_to(62, 1);          // arranca en la biblioteca, ya alejado
   refreshSelMeta();
   refreshVecinos();
@@ -524,17 +624,50 @@ void app_event(KnobEvent e) {
         // hojear una caja de discos.
         if (e == KNOB_CW) album = (uint8_t)((album + 1) % ITEM_COUNT);
         else              album = (uint8_t)((album + ITEM_COUNT - 1) % ITEM_COUNT);
+        refreshDisco(true);
         refreshSelMeta();
-        if (!ES_ALARMA(album)) vinyl_set_album(album, true);
         refreshVecinos();
       } else if (e == KNOB_PRESS) {
-        if (ES_ALARMA(album)) { goAlarma(); break; }
+        if (ES_ALARMA(album))  { goAlarma();  break; }
+        if (ES_AJUSTES(album)) { goAjustes(); break; }
         // Sin escalas: un push y suena. Si este disco es el que ya suena,
         // regresas a el sin reiniciarlo.
         bool mismo = (loaded == (int8_t)album && trackIx);
         goPlaying(!mismo);
       }
       break;
+
+    case ST_AJUSTES: {
+      Ajustes& j = ajustes();
+      int8_t d = (e == KNOB_CW) ? +1 : (e == KNOB_CCW ? -1 : 0);
+      if (d != 0) {
+        if (!editando) campo = (uint8_t)((campo + AJ_CAMPOS + d) % AJ_CAMPOS);
+        else switch (campo) {
+          case 0: j.alFin      = (uint8_t)((j.alFin + 3 + d) % 3); break;
+          case 1: j.reposoMin  = aj_ciclo_reposo(j.reposoMin, d);  break;
+          case 2: j.luzReposo  = aj_ciclo_pct(j.luzReposo, d, 0);  break;
+          case 3: j.luzMusica  = aj_ciclo_pct(j.luzMusica, d, 0);  break;
+          case 4: j.brillo     = aj_ciclo_pct(j.brillo, d, 30);    break;
+          case 5: j.leds       = !j.leds;                          break;
+          default: j.brilloLeds = aj_ciclo_pct(j.brilloLeds, d, 20);
+        }
+        refreshAjustes();
+        // Brillo y LEDs se aplican al instante: ajustar a ciegas y ver el
+        // resultado hasta salir seria adivinar.
+        blNivel = 0;
+        paintRing();
+      } else if (e == KNOB_PRESS) {
+        editando = !editando;
+        if (!editando) ajustes_save();
+        refreshAjustes();
+      } else if (e == KNOB_LONG_PRESS) {
+        editando = false;
+        ajustes_save();
+        fadeTo(ajBox, 0, 220);
+        goSelector();
+      }
+      break;
+    }
 
     case ST_ALARMA: {
       AlarmCfg& c = alarm_cfg();
@@ -620,9 +753,13 @@ void app_tick() {
   vinyl_tick();
   clock_tick();
 
-  // Disparo de la alarma. Solo con hora buena: sin NTP el reloj arranca en
-  // 1970 y dispararia en cuanto encendieras el aparato.
-  {
+  // Disparo de la alarma, una vez por segundo. Consultarlo en cada vuelta del
+  // loop metia una espera de 5ms unas 500 veces por segundo, y eso se sentia
+  // en la perilla. Solo con hora buena: sin NTP el reloj arranca en 1970 y
+  // dispararia en cuanto encendieras el aparato.
+  static uint32_t ultimaRevision = 0;
+  if (millis() - ultimaRevision >= 1000) {
+    ultimaRevision = millis();
     struct tm t;
     if (clock_now(&t) && alarm_debe_sonar(t)) {
       Serial.printf("alarma: %02d:%02d, suena %s\n", t.tm_hour, t.tm_min,
@@ -641,9 +778,12 @@ void app_tick() {
   // apagarse debe sentirse como algo que se retira solo, encenderse como una
   // respuesta inmediata a tu mano.
   {
+    Ajustes& j = ajustes();
     uint32_t idle = knob::idleMs();
     bool sonando = (trackIx && !paused);
-    uint8_t quiero = (idle < IDLE_MS) ? 100 : (sonando ? DIM_PCT : 0);
+    uint32_t umbral = j.reposoMin ? (uint32_t)j.reposoMin * 60000UL : 0xFFFFFFFF;
+    uint8_t quiero = (idle < umbral) ? j.brillo
+                                     : (sonando ? j.luzMusica : j.luzReposo);
     if (quiero != blNivel) {
       blNivel = quiero;
       apagada = (quiero == 0);
@@ -663,6 +803,38 @@ void app_tick() {
   } else if (holdShown) {
     holdShown = false;
     fadeTo(holdArc, 0, 180);
+  }
+
+  // Se acabo el album. Antes el reproductor rebarajaba solo y no paraba nunca;
+  // ahora manda el ajuste.
+  if (player_available() && player_album_fin()) {
+    Ajustes& j = ajustes();
+    if (j.alFin == FIN_REPETIR) {
+      player_play_album(ALBUMS[album].folder, ALBUMS[album].tracks);
+      trackIx = 1;
+      trackStart = millis();
+      refreshDots();
+    } else if (j.alFin == FIN_INFINITO) {
+      // Salta los discos especiales y los vacios: infinito significa que la
+      // musica no para, no que se atore en una carpeta sin canciones.
+      uint8_t sig = album;
+      for (uint8_t k = 0; k < ALBUM_COUNT; k++) {
+        sig = (uint8_t)((sig + 1) % ALBUM_COUNT);
+        if (ALBUMS[sig].tracks) break;
+      }
+      album = sig;
+      refreshDisco(false);
+      startAlbum();
+      Serial.printf("[audio] infinito: sigue %s\n", ALBUMS[album].name);
+    } else {
+      // Detener: el disco se asienta derecho y regresas a la biblioteca.
+      if (player_available()) player_stop();
+      trackIx = 0;
+      paused = false;
+      loaded = -1;
+      goSelector();
+    }
+    paintRing();
   }
 
   // El overlay de volumen se retira solo y devuelve el tiempo a su lugar.
@@ -694,3 +866,8 @@ void app_tick() {
 }
 
 AppState app_state() { return st; }
+
+// Solo para depurar: que nivel de retroiluminacion cree el firmware que tiene,
+// y si considera que hay musica sonando.
+uint8_t app_bl_dbg()      { return blNivel; }
+bool    app_sonando_dbg() { return trackIx && !paused; }

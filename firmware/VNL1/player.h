@@ -33,6 +33,11 @@ void player_stop();
 bool player_playing();
 
 void    player_next();
+
+// true UNA vez cuando se acabo la ultima pista del album. Antes el reproductor
+// rebarajaba y seguia para siempre por su cuenta; ahora avisa y deja que la
+// maquina de estados decida, segun lo que el usuario haya puesto en Ajustes.
+bool    player_album_fin();
 void    player_set_volume(uint8_t vol);   // 0..30, se colapsa en la cola
 uint8_t player_volume();
 

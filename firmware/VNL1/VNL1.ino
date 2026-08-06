@@ -18,6 +18,8 @@
 #include "app.h"
 #include "netclock.h"
 #include "alarm.h"
+#include "settings.h"
+#include "battery.h"
 
 // Etapa 3: en 1 el DFPlayer entra en juego. Sin el modulo conectado la UI
 // funciona completa, solo sin sonido.
@@ -63,6 +65,8 @@ void setup() {
 
   knob::begin();
   alarm_begin();
+  ajustes_begin();
+  bat_begin();
 
   Serial.println();
   Serial.println("VNL-1  etapa 4 — maquina de estados");
@@ -108,7 +112,7 @@ void loop() {
 
     static const char* NAMES[] = { "-", "CW", "CCW", "PRESS", "DOBLE", "LONG",
                                    "DOWN" };
-    static const char* STATES[] = { "SELECTOR", "TOCANDO", "ALARMA" };
+    static const char* STATES[] = { "SELECTOR", "TOCANDO", "ALARMA", "AJUSTES" };
     if (e != KNOB_DOWN) {
       Serial.printf("%-6s -> %s\n", NAMES[e], STATES[app_state()]);
     }
@@ -119,6 +123,7 @@ void loop() {
 #endif
 
   app_tick();
+  bat_tick();
   display_tick();
 #if STAGE3_AUDIO
   player_tick();
@@ -127,8 +132,9 @@ void loop() {
 
   frames++;
   if (millis() - fpsMs >= 3000) {
-    Serial.printf("fps %.1f   estado %d\n", frames * 1000.0f / (millis() - fpsMs),
-                  (int)app_state());
+    Serial.printf("fps %.1f   estado %d   luz %d%%   sonando %d\n",
+                  frames * 1000.0f / (millis() - fpsMs), (int)app_state(),
+                  app_bl_dbg(), app_sonando_dbg() ? 1 : 0);
     frames = 0;
     fpsMs  = millis();
   }

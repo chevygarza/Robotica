@@ -53,11 +53,6 @@
 #define PIN_POWER_LED    40
 #define PIN_BULB_LED     43   // LED "bulb" con PWM propio en el demo de fabrica
 
-// ── Bateria ────────────────────────────────────────────────────────────────
-// IO4 quedo libre cuando el DFPlayer se fue al conector UART. Tiene convertidor
-// analogico, asi que ahi entra el divisor que mide la celda.
-#define PIN_BAT_ADC       4
-
 // ── DFPlayer Mini ──────────────────────────────────────────────────────────
 // Va en el conector UART de 4 hilos (RX·TX·5V·GND), que expone GPIO43/44.
 //
