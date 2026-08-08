@@ -2,10 +2,13 @@
 #include <Preferences.h>
 
 static Preferences prefs;
-static Ajustes aj = { FIN_DETENER, 3, 12, 50, 100, true, 100 };
+static Ajustes aj = { LUZ_AMBAR, true, RELOJ_DIGITAL, FIN_DETENER, 3, 12, 50, 100, true, 100 };
 
 void ajustes_begin() {
   prefs.begin("vnl1", false);
+  aj.luzModo    = prefs.getUChar("aj_luz", LUZ_AMBAR);
+  aj.reloj      = prefs.getBool("aj_rel", true);
+  aj.relojTipo  = prefs.getUChar("aj_relt", RELOJ_DIGITAL);
   aj.alFin      = prefs.getUChar("aj_fin", FIN_DETENER);
   aj.reposoMin  = prefs.getUChar("aj_rep", 3);
   aj.luzReposo  = prefs.getUChar("aj_lrep", 12);
@@ -18,6 +21,9 @@ void ajustes_begin() {
 
 void ajustes_save() {
   prefs.begin("vnl1", false);
+  prefs.putUChar("aj_luz", aj.luzModo);
+  prefs.putBool("aj_rel", aj.reloj);
+  prefs.putUChar("aj_relt", aj.relojTipo);
   prefs.putUChar("aj_fin", aj.alFin);
   prefs.putUChar("aj_rep", aj.reposoMin);
   prefs.putUChar("aj_lrep", aj.luzReposo);
@@ -46,6 +52,18 @@ uint8_t aj_ciclo_pct(uint8_t actual, int8_t dir, uint8_t minimo) {
   if (v > 100) v = minimo;
   if (v < minimo) v = 100;
   return (uint8_t)v;
+}
+
+const char* aj_texto_luz(uint8_t modo) {
+  switch (modo) {
+    case LUZ_COVER: return "caratula";
+    case LUZ_RGB:   return "RGB";
+    default:        return "amarillo";
+  }
+}
+
+const char* aj_texto_reloj(uint8_t tipo) {
+  return tipo == RELOJ_ANALOGO ? "analogo" : "digital";
 }
 
 const char* aj_texto_fin(uint8_t modo) {

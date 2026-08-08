@@ -38,7 +38,14 @@
 #define COLOR_ALARMA  0x6C7A89
 #define COLOR_AJUSTES 0x9AA0A6
 #define CAMPOS          5     // alarma
-#define AJ_CAMPOS       7     // ajustes
+#define AJ_CAMPOS      10     // ajustes
+#define AJ_FILA_H      29     // alto de fila
+#define AJ_VISIBLE      6     // filas a la vista; el resto se recorre
+
+// Ambar calido. Atravesando acrilico se lee como amplificador de bulbos; un
+// color que cambia con el contenido se lee como periferico gamer. El objeto
+// es lo primero.
+#define COLOR_AMBAR  0xFF7A10
 
 static Adafruit_NeoPixel ring(NUM_LEDS, PIN_RGB_DIN, NEO_GRB + NEO_KHZ800);
 
@@ -77,6 +84,15 @@ static lv_obj_t* ajBox    = nullptr;
 static lv_obj_t* ajRot[AJ_CAMPOS] = { nullptr };
 static lv_obj_t* ajVal[AJ_CAMPOS] = { nullptr };
 static lv_obj_t* ajBat    = nullptr;   // lectura de la celda, solo informativa
+static lv_obj_t* ajLista  = nullptr;   // contenedor que se desliza
+static lv_obj_t* relojBox = nullptr;
+static lv_obj_t* rjFecha  = nullptr;
+static lv_obj_t* rjHora   = nullptr;
+static lv_obj_t* rjAmPm   = nullptr;
+static lv_obj_t* rjMarca[12] = { nullptr };
+static lv_obj_t* rjAguja[3]  = { nullptr };
+static lv_point_t rjPtMarca[12][2];
+static lv_point_t rjPtAguja[3][2];
 static lv_obj_t* halo     = nullptr;   // resplandor del album, solo al tocar
 static lv_obj_t* vecinoIzq = nullptr;  // discos de al lado, solo en biblioteca
 static lv_obj_t* vecinoDer = nullptr;
@@ -239,6 +255,84 @@ static void refreshDots() {
                  ES_ESPECIAL(album) ? 0xFFFFFF : ALBUMS[album].color);
 }
 
+// ── Reloj ────────────────────────────────────────────────────────────────────
+// En reposo, en vez de apagarse, la pantalla se vuelve reloj. Es lo que este
+// objeto ya era en la practica: vive fijo en un mueble y se mira de pasada.
+
+static void relojPunto(lv_point_t* p, float grados, lv_coord_t r0, lv_coord_t r1) {
+  float a = (grados - 90.0f) * PI / 180.0f;
+  p[0].x = (lv_coord_t)(180 + r0 * cosf(a));
+  p[0].y = (lv_coord_t)(180 + r0 * sinf(a));
+  p[1].x = (lv_coord_t)(180 + r1 * cosf(a));
+  p[1].y = (lv_coord_t)(180 + r1 * sinf(a));
+}
+
+static void refreshReloj() {
+  Ajustes& j = ajustes();
+  bool analogo = (j.relojTipo == RELOJ_ANALOGO);
+
+  struct tm t;
+  bool hay = clock_now(&t);
+
+  // Digital
+  lv_obj_t* dig[3] = { rjFecha, rjHora, rjAmPm };
+  for (auto o : dig) {
+    if (analogo) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+    else         lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN);
+  }
+  if (!analogo) {
+    if (!hay) {
+      lv_label_set_text(rjFecha, "");
+      lv_label_set_text(rjHora, "--:--");
+      lv_label_set_text(rjAmPm, "sin hora");
+    } else {
+      static const char* MES[] = { "ENE","FEB","MAR","ABR","MAY","JUN",
+                                   "JUL","AGO","SEP","OCT","NOV","DIC" };
+      char b[24];
+      snprintf(b, sizeof(b), "%s %d", MES[t.tm_mon], t.tm_mday);
+      lv_label_set_text(rjFecha, b);
+      uint8_t h12 = t.tm_hour % 12; if (!h12) h12 = 12;
+      snprintf(b, sizeof(b), "%d:%02d", h12, t.tm_min);
+      lv_label_set_text(rjHora, b);
+      lv_label_set_text(rjAmPm, t.tm_hour < 12 ? "AM" : "PM");
+    }
+  }
+
+  // Analogo
+  for (uint8_t i = 0; i < 12; i++) {
+    if (analogo) lv_obj_clear_flag(rjMarca[i], LV_OBJ_FLAG_HIDDEN);
+    else         lv_obj_add_flag(rjMarca[i], LV_OBJ_FLAG_HIDDEN);
+  }
+  for (uint8_t i = 0; i < 3; i++) {
+    if (analogo && hay) lv_obj_clear_flag(rjAguja[i], LV_OBJ_FLAG_HIDDEN);
+    else                lv_obj_add_flag(rjAguja[i], LV_OBJ_FLAG_HIDDEN);
+  }
+  if (analogo && hay) {
+    // La aguja de la hora avanza con los minutos: a las 3:30 no apunta al 3,
+    // apunta a la mitad entre el 3 y el 4. Un reloj que no hace eso se ve mal
+    // sin que uno sepa por que.
+    float gh = (t.tm_hour % 12) * 30.0f + t.tm_min * 0.5f;
+    float gm = t.tm_min * 6.0f + t.tm_sec * 0.1f;
+    float gs = t.tm_sec * 6.0f;
+    relojPunto(rjPtAguja[0], gh, 14, 86);
+    relojPunto(rjPtAguja[1], gm, 14, 126);
+    relojPunto(rjPtAguja[2], gs, -26, 132);
+    for (uint8_t i = 0; i < 3; i++) lv_line_set_points(rjAguja[i], rjPtAguja[i], 2);
+  }
+}
+
+static void goReloj() {
+  st = ST_RELOJ;
+  refreshReloj();
+  fadeTo(selBox, 0, 300);
+  fadeTo(playBox, 0, 300);
+  fadeTo(vecinoIzq, 0, 300);
+  fadeTo(vecinoDer, 0, 300);
+  fadeTo(halo, 0, 300);
+  fadeTo(relojBox, 255, 500);
+  vinyl_zoom_to(20, 500);        // el disco se retira casi por completo
+}
+
 // ── Alarma ───────────────────────────────────────────────────────────────────
 static const char* CAMPO_ROT[CAMPOS] = { "Hora", "Minuto", "Dias", "Disco",
                                          "Alarma" };
@@ -268,7 +362,8 @@ static void refreshAlarma() {
   }
 }
 
-static const char* AJ_ROT[AJ_CAMPOS] = { "Al terminar", "Reposo", "Luz reposo",
+static const char* AJ_ROT[AJ_CAMPOS] = { "Iluminacion", "Reloj", "Tipo reloj",
+                                         "Al terminar", "Reposo", "Luz reposo",
                                          "Luz musica", "Brillo", "LEDs",
                                          "Brillo LEDs" };
 
@@ -285,12 +380,15 @@ static void refreshAjustes() {
   char v[32];
   for (uint8_t i = 0; i < AJ_CAMPOS; i++) {
     switch (i) {
-      case 0: snprintf(v, sizeof(v), "%s", aj_texto_fin(j.alFin)); break;
-      case 1: aj_texto_reposo(v, sizeof(v), j.reposoMin); break;
-      case 2: snprintf(v, sizeof(v), "%u%%", j.luzReposo); break;
-      case 3: snprintf(v, sizeof(v), "%u%%", j.luzMusica); break;
-      case 4: snprintf(v, sizeof(v), "%u%%", j.brillo);    break;
-      case 5: snprintf(v, sizeof(v), "%s", j.leds ? "si" : "no"); break;
+      case 0: snprintf(v, sizeof(v), "%s", aj_texto_luz(j.luzModo)); break;
+      case 1: snprintf(v, sizeof(v), "%s", j.reloj ? "si" : "no"); break;
+      case 2: snprintf(v, sizeof(v), "%s", aj_texto_reloj(j.relojTipo)); break;
+      case 3: snprintf(v, sizeof(v), "%s", aj_texto_fin(j.alFin)); break;
+      case 4: aj_texto_reposo(v, sizeof(v), j.reposoMin); break;
+      case 5: snprintf(v, sizeof(v), "%u%%", j.luzReposo); break;
+      case 6: snprintf(v, sizeof(v), "%u%%", j.luzMusica); break;
+      case 7: snprintf(v, sizeof(v), "%u%%", j.brillo);    break;
+      case 8: snprintf(v, sizeof(v), "%s", j.leds ? "si" : "no"); break;
       default: snprintf(v, sizeof(v), "%u%%", j.brilloLeds);
     }
     lv_label_set_text(ajVal[i], v);
@@ -300,6 +398,14 @@ static void refreshAjustes() {
     lv_obj_set_style_text_opa(ajVal[i], sel ? LV_OPA_COVER : 175, 0);
     lv_obj_set_style_text_opa(ajRot[i], sel ? 235 : 150, 0);
   }
+
+  // Diez campos no caben en una pantalla redonda de 360. La lista se recorre
+  // para que el campo elegido quede siempre en la banda central, que es la
+  // parte mas ancha del circulo.
+  int16_t desplaza = 0;
+  if (campo > 2) desplaza = -(int16_t)((campo - 2) * AJ_FILA_H);
+  if (campo > AJ_CAMPOS - 3) desplaza = -(int16_t)((AJ_CAMPOS - 5) * AJ_FILA_H);
+  lv_obj_set_y(ajLista, desplaza);
 }
 
 static void goAjustes() {
@@ -417,15 +523,36 @@ static void paintRing() {
   ring.setBrightness((uint8_t)((uint32_t)br * blNivel * ajustes().brilloLeds
                                / 10000));
 
-  // Con caratula, cada LED toma el color del sector de la imagen que le queda
-  // detras: el anillo es un reflejo del arte, no ocho copias del mismo tono.
   const uint32_t* pal = ES_ESPECIAL(src) ? nullptr : ALBUMS[src].anillo;
-  if (pal) {
-    for (int i = 0; i < NUM_LEDS; i++) ring.setPixelColor(i, pal[i % 8]);
-  } else {
-    uint32_t col = ES_AJUSTES(src) ? COLOR_AJUSTES
-                 : ES_ALARMA(src)  ? COLOR_ALARMA : ALBUMS[src].color;
-    for (int i = 0; i < NUM_LEDS; i++) ring.setPixelColor(i, col);
+  switch (ajustes().luzModo) {
+
+    case LUZ_RGB: {
+      // Arcoiris repartido alrededor del anillo, girando una vuelta cada 30
+      // segundos. Lento y continuo a proposito: los saltos de color son lo que
+      // hace que el RGB se vea barato.
+      uint16_t base = (uint16_t)((millis() % 30000UL) * 65536UL / 30000UL);
+      for (int i = 0; i < NUM_LEDS; i++) {
+        uint16_t h = (uint16_t)(base + (uint32_t)i * 65536UL / NUM_LEDS);
+        ring.setPixelColor(i, ring.gamma32(ring.ColorHSV(h, 255, 255)));
+      }
+      break;
+    }
+
+    case LUZ_COVER:
+      // Cada LED toma el color del sector de la caratula que le queda detras:
+      // el anillo como reflejo del arte.
+      if (pal) {
+        for (int i = 0; i < NUM_LEDS; i++) ring.setPixelColor(i, pal[i % 8]);
+      } else {
+        uint32_t col = ES_AJUSTES(src) ? COLOR_AJUSTES
+                     : ES_ALARMA(src)  ? COLOR_ALARMA : ALBUMS[src].color;
+        for (int i = 0; i < NUM_LEDS; i++) ring.setPixelColor(i, col);
+      }
+      break;
+
+    default:
+      for (int i = 0; i < NUM_LEDS; i++) ring.setPixelColor(i, COLOR_AMBAR);
+      break;
   }
   ring.show();
 }
@@ -524,6 +651,56 @@ bool app_begin() {
     }
   }
 
+  // Reloj de reposo. Digital y analogo comparten caja; se muestra uno u otro.
+  relojBox = mkBox(scr);
+  {
+    lv_obj_t* velo = lv_obj_create(relojBox);
+    lv_obj_remove_style_all(velo);
+    lv_obj_set_size(velo, 360, 360);
+    lv_obj_center(velo);
+    lv_obj_set_style_radius(velo, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(velo, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(velo, LV_OPA_COVER, 0);
+
+    rjFecha = mkLabel(relojBox, &lv_font_montserrat_20, 150, 108);
+    rjHora  = mkLabel(relojBox, &lv_font_montserrat_48, LV_OPA_COVER, 145);
+    rjAmPm  = mkLabel(relojBox, &lv_font_montserrat_20, LV_OPA_COVER, 218);
+    lv_obj_set_style_text_color(rjAmPm, lv_color_hex(COLOR_AMBAR), 0);
+
+    // Indices: mas largos y claros en las cuatro horas cardinales.
+    for (uint8_t i = 0; i < 12; i++) {
+      bool cardinal = (i % 3 == 0);
+      relojPunto(rjPtMarca[i], i * 30.0f, cardinal ? 132 : 140, 152);
+      rjMarca[i] = lv_line_create(relojBox);
+      lv_obj_set_pos(rjMarca[i], 0, 0);
+      lv_obj_set_style_line_color(rjMarca[i], lv_color_white(), 0);
+      lv_obj_set_style_line_width(rjMarca[i], cardinal ? 4 : 2, 0);
+      lv_obj_set_style_line_opa(rjMarca[i], cardinal ? 230 : 120, 0);
+      lv_obj_set_style_line_rounded(rjMarca[i], true, 0);
+      lv_line_set_points(rjMarca[i], rjPtMarca[i], 2);
+      lv_obj_add_flag(rjMarca[i], LV_OBJ_FLAG_HIDDEN);
+    }
+    // Horas y minutos en blanco, segundero en ambar: el unico elemento que se
+    // mueve lleva el color de la caja.
+    const lv_coord_t ANCHO[3] = { 7, 5, 2 };
+    for (uint8_t i = 0; i < 3; i++) {
+      rjAguja[i] = lv_line_create(relojBox);
+      lv_obj_set_pos(rjAguja[i], 0, 0);
+      lv_obj_set_style_line_color(rjAguja[i],
+          i == 2 ? lv_color_hex(COLOR_AMBAR) : lv_color_white(), 0);
+      lv_obj_set_style_line_width(rjAguja[i], ANCHO[i], 0);
+      lv_obj_set_style_line_rounded(rjAguja[i], true, 0);
+      lv_obj_add_flag(rjAguja[i], LV_OBJ_FLAG_HIDDEN);
+    }
+    lv_obj_t* eje = lv_obj_create(relojBox);
+    lv_obj_remove_style_all(eje);
+    lv_obj_set_size(eje, 10, 10);
+    lv_obj_center(eje);
+    lv_obj_set_style_radius(eje, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(eje, lv_color_hex(COLOR_AMBAR), 0);
+    lv_obj_set_style_bg_opa(eje, LV_OPA_COVER, 0);
+  }
+
   // Pantalla de Ajustes: misma estructura que la de alarma, mismo vocabulario
   // de gestos. No hay nada nuevo que aprender.
   ajBox = mkBox(scr);
@@ -541,7 +718,7 @@ bool app_begin() {
     lv_obj_set_style_text_color(tit, lv_color_hex(COLOR_AJUSTES), 0);
     lv_obj_set_style_text_align(tit, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_width(tit, 300);
-    lv_obj_set_pos(tit, 30, 40);
+    lv_obj_set_pos(tit, 30, 32);
     lv_label_set_text(tit, "AJUSTES");
 
     ajBat = lv_label_create(ajBox);
@@ -550,11 +727,11 @@ bool app_begin() {
     lv_obj_set_style_text_opa(ajBat, 140, 0);
     lv_obj_set_style_text_align(ajBat, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_width(ajBat, 300);
-    lv_obj_set_pos(ajBat, 30, 68);
+    lv_obj_set_pos(ajBat, 30, 60);
     lv_label_set_text(ajBat, "");
 
     for (uint8_t i = 0; i < AJ_CAMPOS; i++) {
-      lv_coord_t y = 98 + i * 31;      // siete filas piden pasos mas cortos
+      lv_coord_t y = 86 + i * 29;      // siete filas piden pasos mas cortos
       ajRot[i] = lv_label_create(ajBox);
       lv_obj_set_style_text_font(ajRot[i], &lv_font_montserrat_16, 0);
       lv_obj_set_style_text_color(ajRot[i], lv_color_white(), 0);
@@ -562,7 +739,7 @@ bool app_begin() {
       lv_obj_set_pos(ajRot[i], 52, y);
       lv_label_set_text(ajRot[i], AJ_ROT[i]);
 
-      ajVal[i] = lv_label_create(ajBox);
+      ajVal[i] = lv_label_create(ajLista);
       lv_obj_set_style_text_font(ajVal[i], &lv_font_montserrat_16, 0);
       lv_obj_set_style_text_color(ajVal[i], lv_color_white(), 0);
       lv_obj_set_style_text_align(ajVal[i], LV_TEXT_ALIGN_RIGHT, 0);
@@ -598,6 +775,15 @@ void app_event(KnobEvent e) {
     apagada = false;
     blNivel = 100;
     display_backlight_fade(100, 260);
+    return;
+  }
+
+  // Del reloj se sale con cualquier gesto, y ese gesto SOLO saca: si no,
+  // alcanzas la perilla para ver la hora de cerca y acabas cambiando de disco.
+  if (st == ST_RELOJ) {
+    fadeTo(relojBox, 0, 260);
+    if (trackIx && !paused) goPlaying(false);
+    else                    goSelector();
     return;
   }
   if (e == KNOB_DOWN) { vinyl_bump(); return; }
@@ -643,12 +829,15 @@ void app_event(KnobEvent e) {
       if (d != 0) {
         if (!editando) campo = (uint8_t)((campo + AJ_CAMPOS + d) % AJ_CAMPOS);
         else switch (campo) {
-          case 0: j.alFin      = (uint8_t)((j.alFin + 3 + d) % 3); break;
-          case 1: j.reposoMin  = aj_ciclo_reposo(j.reposoMin, d);  break;
-          case 2: j.luzReposo  = aj_ciclo_pct(j.luzReposo, d, 0);  break;
-          case 3: j.luzMusica  = aj_ciclo_pct(j.luzMusica, d, 0);  break;
-          case 4: j.brillo     = aj_ciclo_pct(j.brillo, d, 30);    break;
-          case 5: j.leds       = !j.leds;                          break;
+          case 0: j.luzModo    = (uint8_t)((j.luzModo + 3 + d) % 3); break;
+          case 1: j.reloj      = !j.reloj;                          break;
+          case 2: j.relojTipo  = (uint8_t)((j.relojTipo + 2 + d) % 2); break;
+          case 3: j.alFin      = (uint8_t)((j.alFin + 3 + d) % 3);  break;
+          case 4: j.reposoMin  = aj_ciclo_reposo(j.reposoMin, d);   break;
+          case 5: j.luzReposo  = aj_ciclo_pct(j.luzReposo, d, 0);   break;
+          case 6: j.luzMusica  = aj_ciclo_pct(j.luzMusica, d, 0);   break;
+          case 7: j.brillo     = aj_ciclo_pct(j.brillo, d, 30);     break;
+          case 8: j.leds       = !j.leds;                           break;
           default: j.brilloLeds = aj_ciclo_pct(j.brilloLeds, d, 20);
         }
         refreshAjustes();
@@ -782,8 +971,18 @@ void app_tick() {
     uint32_t idle = knob::idleMs();
     bool sonando = (trackIx && !paused);
     uint32_t umbral = j.reposoMin ? (uint32_t)j.reposoMin * 60000UL : 0xFFFFFFFF;
-    uint8_t quiero = (idle < umbral) ? j.brillo
-                                     : (sonando ? j.luzMusica : j.luzReposo);
+    bool enReposo = (idle >= umbral);
+
+    // Con el reloj puesto, el reposo no apaga: convierte la pantalla en reloj.
+    if (enReposo && j.reloj && (st == ST_SELECTOR || st == ST_PLAYING)) {
+      goReloj();
+    }
+
+    uint8_t quiero = !enReposo ? j.brillo
+                               : (sonando ? j.luzMusica : j.luzReposo);
+    // Un reloj apagado no es un reloj: si el nivel de reposo es cero pero hay
+    // caratula de hora, se deja un minimo legible.
+    if (enReposo && st == ST_RELOJ && quiero < 10) quiero = 10;
     if (quiero != blNivel) {
       blNivel = quiero;
       apagada = (quiero == 0);
@@ -855,6 +1054,8 @@ void app_tick() {
       refreshDots();
     }
 
+    if (st == ST_RELOJ) refreshReloj();
+
     if (st == ST_PLAYING && !volShownMs) {
       char t[12];
       fmtTime(t, sizeof(t), elapsedS());
@@ -862,7 +1063,9 @@ void app_tick() {
     }
   }
 
-  if (trackIx && !paused) paintRing();     // la respiracion necesita refresco
+  // El arcoiris avanza solo, asi que necesita refresco constante aunque no
+  // haya musica ni eventos.
+  if ((trackIx && !paused) || ajustes().luzModo == LUZ_RGB) paintRing();
 }
 
 AppState app_state() { return st; }

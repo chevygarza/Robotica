@@ -11,7 +11,7 @@
 #include <Arduino.h>
 #include "knob.h"
 
-enum AppState : uint8_t { ST_SELECTOR = 0, ST_PLAYING, ST_ALARMA, ST_AJUSTES };
+enum AppState : uint8_t { ST_SELECTOR = 0, ST_PLAYING, ST_ALARMA, ST_AJUSTES, ST_RELOJ };
 
 bool      app_begin();
 void      app_event(KnobEvent e);
