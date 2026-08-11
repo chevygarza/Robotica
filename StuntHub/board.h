@@ -27,7 +27,14 @@
 
 // Pines de alimentación interna que el ejemplo activa para encender la pantalla
 #define PIN_SCR_PWR_A   1
-#define PIN_SCR_PWR_B   2
+#define PIN_SCR_PWR_B   2   // riel 5V de los conectores UART/I2C: alimenta el DFPlayer
+
+// ---- DFPlayer Mini (conector UART de 4 hilos) ----
+// No pelea con el monitor serial: con USB CDC, Serial es el USB nativo del S3,
+// no UART0. Estos pines quedan libres y player.cpp usa UART1 ruteado a ellos.
+// El cableado (1k en el blanco TX->RX, cap de 1000uF en VCC/GND) es fisico.
+#define PIN_DF_TX       43   // ESP32 TX -> [1k] -> RX del DFPlayer
+#define PIN_DF_RX       44   // ESP32 RX <-------- TX del DFPlayer
 #define PIN_RGB_PWR    17
 
 static const uint32_t SCREEN_W = 360;

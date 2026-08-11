@@ -15,6 +15,7 @@
 #include "app_hue.h"
 #include "app_markets.h"
 #include "app_wol.h"
+#include "player.h"
 
 LGFX gfx;
 cst816t touch(Wire, PIN_TOUCH_RST, PIN_TOUCH_INT);
@@ -176,6 +177,7 @@ void setup() {
   hue_begin();   // Philips Hue en su propio task (core 0)
   markets_begin(); // Mercados (cripto) en su propio task (core 0)
   pc_status_begin(); // Estado directo de la PC gamer (task persistente, core 0)
+  player_begin();    // DFPlayer por UART1. Sin modulo -> todo no-op, la UI sigue.
 
   g_lastActivity = millis();   // arranca el contador de inactividad
 }
@@ -183,6 +185,7 @@ void setup() {
 void loop() {
   lv_timer_handler();
   ui_tick();
+  player_tick();   // vacia la cola del DFPlayer y atiende sus avisos
 
   // Consumir eventos de la perilla en el hilo de LVGL
   uint32_t now = millis();

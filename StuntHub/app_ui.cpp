@@ -3,6 +3,9 @@
 #include "app_hue.h"
 #include "app_markets.h"
 #include "app_wol.h"
+#include "player.h"
+#include "vinyl.h"
+#include "albums.h"
 #include <lvgl.h>
 #include <math.h>
 #include <string.h>
@@ -30,9 +33,10 @@ extern "C" {
 // numeros por todo el archivo. VinilOS entra aqui en la etapa 4.
 #define APP_LUCES     0
 #define APP_MERCADOS  1
-#define APP_PC        2
-#define APP_FOTOS     3
-#define NUM_APPS      4
+#define APP_MUSICA    2
+#define APP_PC        3
+#define APP_FOTOS     4
+#define NUM_APPS      5
 
 // Pantallas: una overview por app
 static lv_obj_t *ovScr[NUM_APPS];
@@ -63,6 +67,22 @@ static lv_obj_t *wallGif, *wallName;
 static int wallCur = 0;
 static lv_img_dsc_t wallDsc[3];
 static const char *wallNames[3] = { "Dragon Ball", "Pokemon", "Zelda" };
+
+// --- Musica (VinilOS): portada -> biblioteca -> reproduciendo ---
+// EXCEPCION documentada a la regla 8 (fondos brillantes): dentro de esta app el
+// fondo es negro. La caratula llena el disco, asi que la mura del panel casi no
+// se ve y el negro es lo que hace que el vinilo se lea como objeto.
+enum MusView { MV_COVER, MV_LIB, MV_PLAY };
+static MusView musView = MV_COVER;
+static lv_obj_t *musScr = nullptr;            // pantalla del vinilo (lib + play)
+static lv_obj_t *musName, *musSub;            // biblioteca: album y subtitulo
+static lv_obj_t *musCard, *musTrack, *musArtist;  // reproduciendo: pista
+static lv_obj_t *musVol;                      // overlay de volumen
+static uint8_t  musSel = 0;                   // disco que se hojea
+static int8_t   musLoaded = -1;               // disco que suena (-1 = ninguno)
+static uint8_t  musTrackIx = 0;
+static bool     musPaused = false;
+static uint32_t musVolUntil = 0;
 
 // --- PC Gamer: cover + menu navegable con la perilla ---
 enum PgView { PG_COVER, PG_MENU, PG_WAKING, PG_OFFING };
@@ -418,8 +438,18 @@ static void wallShow(bool on) {
   }
 }
 
-void ui_screen_off() { wallShow(false); }
-void ui_screen_on()  { wallShow(curApp == APP_FOTOS); }
+// Dormir la pantalla suelta el trabajo visual caro (el GIF y la rotacion del
+// disco). CONDICION QUE NO SE NEGOCIA: la musica NO se detiene — duerme la
+// pantalla, no el aparato. Por eso aqui no se toca el player.
+void ui_screen_off() {
+  wallShow(false);
+  vinyl_set_spinning(false);
+}
+void ui_screen_on() {
+  wallShow(curApp == APP_FOTOS);
+  // Retoma el giro solo si seguia sonando y estabas en el plato.
+  if (curApp == APP_MUSICA && musView == MV_PLAY && !musPaused) vinyl_set_spinning(true);
+}
 
 static void buildWallpaperScreen() {
   lv_obj_t *s = newScreen();
@@ -565,12 +595,175 @@ static void buildGamerScreen() {
   buildDots(s, APP_PC);
 }
 
+// ---------- App: Musica (VinilOS) ----------
+// Girar en la portada = cambiar de app. Push = biblioteca (girar hojea discos,
+// push reproduce). Dentro de reproduccion el giro es VOLUMEN y manten regresa.
+// La pantalla es el indicador de modo: el giro no significa dos cosas en la
+// misma vista (regla central de VinilOS).
+static void buildMusicCover() {
+  lv_obj_t *s = newScreen();
+  ovScr[APP_MUSICA] = s;
+
+  // Disco insinuado: aro exterior + etiqueta al centro
+  lv_obj_align(mkCircle(s, 150, 0x101010, LV_OPA_COVER), LV_ALIGN_CENTER, 0, -34);
+  lv_obj_align(mkCircle(s, 132, 0x2A2A2A, LV_OPA_COVER), LV_ALIGN_CENTER, 0, -34);
+  lv_obj_align(mkCircle(s, 118, 0x101010, LV_OPA_COVER), LV_ALIGN_CENTER, 0, -34);
+  lv_obj_align(mkCircle(s, 58,  0xFFB454, LV_OPA_COVER), LV_ALIGN_CENTER, 0, -34);
+  lv_obj_align(mkCircle(s, 12,  0x000000, LV_OPA_COVER), LV_ALIGN_CENTER, 0, -34);
+
+  lv_obj_t *wm = mkLabel(s, &lv_font_montserrat_28, COL_TXT);
+  lv_label_set_text(wm, "VinilOS");
+  lv_obj_align(wm, LV_ALIGN_CENTER, 0, 60);
+
+  lv_obj_t *info = mkLabel(s, &lv_font_montserrat_14, COL_SUB);
+  char b[40]; snprintf(b, sizeof(b), "%d discos", (int)ALBUM_COUNT);
+  lv_label_set_text(info, b);
+  lv_obj_align(info, LV_ALIGN_CENTER, 0, 88);
+
+  lv_obj_t *h = mkLabel(s, &lv_font_montserrat_14, COL_ACCENT);
+  lv_label_set_text(h, "push: entrar");
+  lv_obj_align(h, LV_ALIGN_CENTER, 0, 116);
+
+  buildDots(s, APP_MUSICA);
+}
+
+// Pantalla del vinilo: la comparten biblioteca y reproduccion. Lo que cambia
+// entre las dos es la ESCALA del disco (62% vs 100%) y que capa se ve.
+static void buildMusicScreen() {
+  lv_obj_t *s = lv_obj_create(NULL);
+  lv_obj_set_style_bg_color(s, lv_color_hex(0x000000), 0);   // negro a proposito
+  lv_obj_set_style_bg_opa(s, LV_OPA_COVER, 0);
+  lv_obj_clear_flag(s, LV_OBJ_FLAG_SCROLLABLE);
+  musScr = s;
+
+  vinyl_create(s);
+
+  // Biblioteca: nombre arriba (el disco al 62% deja libre esa franja y respeta
+  // el safe area; abajo la curva se come el texto).
+  musName = mkLabel(s, &lv_font_montserrat_20, COL_TXT);
+  lv_obj_set_style_text_align(musName, LV_TEXT_ALIGN_CENTER, 0);
+  lv_label_set_text(musName, "");
+  lv_obj_align(musName, LV_ALIGN_TOP_MID, 0, 42);
+
+  musSub = mkLabel(s, &lv_font_montserrat_12, COL_SUB);
+  lv_obj_set_style_text_align(musSub, LV_TEXT_ALIGN_CENTER, 0);
+  lv_label_set_text(musSub, "");
+  lv_obj_align(musSub, LV_ALIGN_TOP_MID, 0, 68);
+
+  // Reproduccion: la pista va en capa FIJA sobre el disco (la etiqueta gira, y
+  // un texto girando no se lee). Card translucida para que se lea sobre el arte.
+  musCard = lv_obj_create(s);
+  lv_obj_remove_style_all(musCard);
+  lv_obj_set_size(musCard, 300, 62);
+  lv_obj_set_style_bg_color(musCard, lv_color_hex(0x000000), 0);
+  lv_obj_set_style_bg_opa(musCard, 170, 0);
+  lv_obj_set_style_radius(musCard, 16, 0);
+  lv_obj_align(musCard, LV_ALIGN_CENTER, 0, 96);
+  lv_obj_clear_flag(musCard, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(musCard, LV_OBJ_FLAG_HIDDEN);
+
+  musTrack = mkLabel(musCard, &lv_font_montserrat_16, COL_TXT);
+  lv_label_set_long_mode(musTrack, LV_LABEL_LONG_DOT);
+  lv_obj_set_width(musTrack, 280);
+  lv_obj_set_style_text_align(musTrack, LV_TEXT_ALIGN_CENTER, 0);
+  lv_label_set_text(musTrack, "");
+  lv_obj_align(musTrack, LV_ALIGN_TOP_MID, 0, 6);
+
+  musArtist = mkLabel(musCard, &lv_font_montserrat_12, COL_SUB);
+  lv_label_set_long_mode(musArtist, LV_LABEL_LONG_DOT);
+  lv_obj_set_width(musArtist, 280);
+  lv_obj_set_style_text_align(musArtist, LV_TEXT_ALIGN_CENTER, 0);
+  lv_label_set_text(musArtist, "");
+  lv_obj_align(musArtist, LV_ALIGN_TOP_MID, 0, 32);
+
+  musVol = mkLabel(s, &lv_font_montserrat_20, COL_WARM);
+  lv_label_set_text(musVol, "");
+  lv_obj_align(musVol, LV_ALIGN_TOP_MID, 0, 46);
+  lv_obj_add_flag(musVol, LV_OBJ_FLAG_HIDDEN);
+}
+
+// Nombre/artista de lo que SUENA (no de lo que hojeas: son distintos en cuanto
+// sales a la biblioteca con la musica puesta). El indice de la baraja no sirve
+// aqui: los nombres estan indexados por ARCHIVO.
+static const char* musPista(bool artista) {
+  if (musLoaded < 0 || !musTrackIx) return "";
+  const Album &a = ALBUMS[musLoaded];
+  uint8_t f = player_track_file();
+  if (!f || f > a.tracks) return "";
+  const char *const *t = artista ? a.track_artists : a.track_names;
+  const char *v = t ? t[f - 1] : nullptr;
+  return v ? v : "";
+}
+
+static void musRefreshTrack() {
+  lv_label_set_text(musTrack,  musPista(false));
+  char b[96];
+  const char *ar = musPista(true);
+  if (musLoaded >= 0 && musTrackIx)
+    snprintf(b, sizeof(b), "%s%s%d/%d", ar, ar[0] ? "  -  " : "",
+             musTrackIx, ALBUMS[musLoaded].tracks);
+  else b[0] = 0;
+  lv_label_set_text(musArtist, b);
+}
+
+static void musRefreshLib() {
+  const Album &a = ALBUMS[musSel];
+  lv_label_set_text(musName, a.name);
+  char b[64];
+  int mins = a.seconds / 60;
+  if (a.subtitle && a.subtitle[0])
+    snprintf(b, sizeof(b), "%s  -  %d temas  -  %d min", a.subtitle, a.tracks, mins);
+  else
+    snprintf(b, sizeof(b), "%d temas  -  %d min", a.tracks, mins);
+  lv_label_set_text(musSub, b);
+  vinyl_set_album(musSel, true);
+}
+
+// Biblioteca: la camara se aleja y el disco muestra la caratula completa.
+static void musGoLib() {
+  musView = MV_LIB;
+  vinyl_zoom_to(62, 420);
+  vinyl_cover_mode(true);
+  vinyl_set_spinning(false);      // frena con inercia; la musica NO se detiene
+  lv_obj_add_flag(musCard, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_flag(musVol,  LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(musName, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(musSub,  LV_OBJ_FLAG_HIDDEN);
+  musRefreshLib();
+}
+
+// Reproduccion: la camara se acerca, el disco llena el cuadro y gira.
+static void musGoPlay(bool arrancar) {
+  musView = MV_PLAY;
+  vinyl_zoom_to(100, 420);
+  vinyl_cover_mode(false);
+  vinyl_set_album(musSel, false);
+  vinyl_set_spinning(true);
+  lv_obj_add_flag(musName, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_flag(musSub,  LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(musCard, LV_OBJ_FLAG_HIDDEN);
+
+  if (arrancar || musLoaded != (int8_t)musSel || !musTrackIx) {
+    musLoaded = (int8_t)musSel;
+    musTrackIx = 1;
+    musPaused = false;
+    if (player_available()) player_play_album(ALBUMS[musSel].folder, ALBUMS[musSel].tracks);
+  } else if (musPaused) {
+    musPaused = false;
+    if (player_available()) player_resume();
+  }
+  vinyl_set_dots(ALBUMS[musSel].tracks, musTrackIx, ALBUMS[musSel].color);
+  musRefreshTrack();
+}
+
 void ui_build() {
   buildHueCover();
   buildHueFavs();
   buildHueMenuScreen();
   buildGamerMenu();
   buildMarketsScreen();
+  buildMusicCover();
+  buildMusicScreen();
   buildWallpaperScreen();
   buildGamerScreen();
   lv_scr_load(ovScr[APP_LUCES]);
@@ -586,6 +779,25 @@ void ui_nav(int dir) {
     pgConfirming = false;                          // moverse cancela la confirmacion
     lv_label_set_text(pgMenuHint, "");
     pgApplyHighlight();
+    return;
+  }
+  if (curApp == APP_MUSICA && musView != MV_COVER) {
+    if (musView == MV_LIB) {                      // biblioteca: hojear discos
+      int n = (int)musSel + dir;                  // circular, como en VinilOS
+      if (n < 0) n = ALBUM_COUNT - 1;
+      if (n >= (int)ALBUM_COUNT) n = 0;
+      musSel = (uint8_t)n;
+      musRefreshLib();
+    } else {                                      // reproduciendo: VOLUMEN
+      int v = (int)player_volume() + dir;
+      if (v < 0) v = 0;
+      if (v > PLAYER_VOL_MAX) v = PLAYER_VOL_MAX;
+      player_set_volume((uint8_t)v);              // la cola colapsa las rafagas
+      char b[16]; snprintf(b, sizeof(b), "Vol %d", v);
+      lv_label_set_text(musVol, b);
+      lv_obj_clear_flag(musVol, LV_OBJ_FLAG_HIDDEN);
+      musVolUntil = millis() + 1200;
+    }
     return;
   }
   if (curApp == APP_LUCES && hueView != HV_NONE) { // navegando listas de Hue
@@ -611,6 +823,27 @@ void ui_nav(int dir) {
 void ui_select() {
   // --- App Mercados: push = refrescar ---
   if (curApp == APP_MERCADOS) { markets_request(); return; }
+  // --- App Musica (VinilOS): portada -> biblioteca -> reproducir/pausa ---
+  if (curApp == APP_MUSICA) {
+    if (musView == MV_COVER) {                    // portada -> biblioteca
+      musGoLib();
+      lv_scr_load_anim(musScr, LV_SCR_LOAD_ANIM_OVER_LEFT, 250, 0, false);
+    } else if (musView == MV_LIB) {               // disco -> reproducir
+      musGoPlay(true);
+    } else {                                      // reproduciendo: pausa/reanuda
+      vinyl_bump();                               // feedback inmediato al apretar
+      if (musPaused) {
+        musPaused = false;
+        if (player_available()) player_resume();
+        vinyl_set_spinning(true);
+      } else {
+        musPaused = true;
+        if (player_available()) player_pause();
+        vinyl_set_spinning(false);                // frena derecho, no torcido
+      }
+    }
+    return;
+  }
   // --- App PC Gamer: cover -> menu -> activar opcion ---
   if (curApp == APP_PC) {
     if (pgView == PG_COVER) {            // cover: entrar al menu
@@ -726,6 +959,15 @@ void ui_back() {
     lv_scr_load_anim(ovScr[APP_PC], LV_SCR_LOAD_ANIM_OVER_RIGHT, 250, 0, false);
     return;
   }
+  if (curApp == APP_MUSICA && musView != MV_COVER) {
+    if (musView == MV_PLAY) {                     // reproduccion -> biblioteca
+      musGoLib();                                 // la musica SIGUE sonando
+    } else {                                      // biblioteca -> portada
+      musView = MV_COVER;
+      lv_scr_load_anim(ovScr[APP_MUSICA], LV_SCR_LOAD_ANIM_OVER_RIGHT, 250, 0, false);
+    }
+    return;
+  }
   if (curApp == APP_LUCES && hueView != HV_NONE) {
     if (hueView == HV_CONTROL) {
       hueView = HV_LIGHTS; hueSel = hueLightSel; hueEnterLights();
@@ -745,6 +987,30 @@ void ui_back() {
 void ui_tick() {
   // PC Gamer: el task de estado solo consulta mientras se ve la app 6
   pc_status_active(curApp == APP_PC);
+
+  // --- Musica (VinilOS) ---
+  // vinyl_tick mueve la rotacion: solo mientras se ve el disco (es lo mas caro
+  // de dibujar del firmware). Va ANTES del throttle de 500ms para que gire fluido.
+  if (curApp == APP_MUSICA && musView != MV_COVER) {
+    vinyl_tick();
+    if (musVolUntil && millis() > musVolUntil) {
+      musVolUntil = 0;
+      lv_obj_add_flag(musVol, LV_OBJ_FLAG_HIDDEN);
+    }
+    // El DFPlayer avisa solo cuando cambia de pista; la UI lo refleja.
+    if (player_available() && player_track_index() && player_track_index() != musTrackIx) {
+      musTrackIx = player_track_index();
+      if (musLoaded >= 0)
+        vinyl_set_dots(ALBUMS[musLoaded].tracks, musTrackIx, ALBUMS[musLoaded].color);
+      musRefreshTrack();
+    }
+    // Fin del album: por ahora repite el mismo disco (Ajustes llega en etapa 5).
+    if (player_available() && player_album_fin() && musLoaded >= 0) {
+      musTrackIx = 1;
+      player_play_album(ALBUMS[musLoaded].folder, ALBUMS[musLoaded].tracks);
+      musRefreshTrack();
+    }
+  }
 
   // El throttle de 500ms protege el resto del tick (Hue/Mercados/PC).
   static uint32_t last = 0;
