@@ -25,26 +25,12 @@ struct WeatherData {
   int   rainProb  = 0;            // % de ese slot
 };
 
-// Perfil de X (@stuntech)
-struct XProfile {
-  bool valid = false;
-  char name[64]     = "";
-  char username[32] = "";
-  long followers = 0;
-  long following = 0;
-  long tweets    = 0;
-  long listed    = 0;
-  char bio[160]    = "";
-  char created[24] = "";   // ISO; mostramos "YYYY-MM"
-};
-
 // Estado global compartido (protegido por mutex)
 struct AppState {
   bool wifiUp    = false;
   bool timeValid = false;
   char status[48] = "Iniciando";
   WeatherData weather;
-  XProfile    x;
 };
 
 extern AppState g_state;
@@ -52,5 +38,4 @@ extern AppState g_state;
 void net_begin();                  // arranca WiFi + NTP + task de fetch
 bool net_lock(uint32_t ms = 30);   // toma el mutex del estado
 void net_unlock();                 // libera el mutex
-void net_request_x();              // pide refrescar X (a demanda; tope 1/min)
 void net_request_weather();        // pide refrescar clima (gratis)

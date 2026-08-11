@@ -10,9 +10,7 @@
 AppState g_state;
 static SemaphoreHandle_t s_mutex = nullptr;
 
-static volatile bool s_reqX  = true;    // true al inicio: 1 fetch de X al arrancar
 static volatile bool s_reqWx = false;
-void net_request_x()       { s_reqX  = true; }
 void net_request_weather() { s_reqWx = true; }
 
 bool net_lock(uint32_t ms) {
@@ -93,51 +91,6 @@ static void fetchWeather() {
   https.end();
 }
 
-// ---------- Perfil X: api.x.com v2 ----------
-static void fetchX() {
-  if (String(X_BEARER_TOKEN).startsWith("PEGA_AQUI")) { setStatus("X: falta token"); return; }
-  WiFiClientSecure client;
-  client.setCACert(ISRG_ROOT_X1);
-  HTTPClient https;
-  String url = "https://api.x.com/2/users/by/username/" + String(X_USERNAME) +
-               "?user.fields=public_metrics,name,description,created_at";
-  if (!https.begin(client, url)) { setStatus("X: conexion fallo"); Serial.println("[X] begin() fallo"); return; }
-  https.addHeader("Authorization", String("Bearer ") + X_BEARER_TOKEN);
-  int code = https.GET();
-  Serial.printf("[X] HTTP=%d  heap=%u\n", code, (unsigned)ESP.getFreeHeap());
-  if (code == 200) {
-    String body = https.getString();
-    JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, body);
-    Serial.printf("[X] body=%uB parse=%s hasData=%d\n", (unsigned)body.length(), err.c_str(), (int)doc["data"].is<JsonObject>());
-    if (!err && doc["data"].is<JsonObject>()) {
-      JsonObject d  = doc["data"];
-      JsonObject pm = d["public_metrics"];
-      if (net_lock(50)) {
-        strncpy(g_state.x.name,     d["name"]     | "",        sizeof(g_state.x.name) - 1);
-        strncpy(g_state.x.username, d["username"] | X_USERNAME, sizeof(g_state.x.username) - 1);
-        g_state.x.followers = pm["followers_count"] | 0;
-        g_state.x.following = pm["following_count"] | 0;
-        g_state.x.tweets    = pm["tweet_count"]     | 0;
-        g_state.x.listed    = pm["listed_count"]    | 0;
-        strncpy(g_state.x.bio,     d["description"] | "", sizeof(g_state.x.bio) - 1);
-        strncpy(g_state.x.created, d["created_at"]  | "", sizeof(g_state.x.created) - 1);
-        // la fuente LVGL no trae acentos/emoji: saneamos la bio a ASCII imprimible
-        for (char *c = g_state.x.bio; *c; ++c)
-          if ((unsigned char)*c < 32 || (unsigned char)*c > 126) *c = ' ';
-        g_state.x.valid     = true;
-        Serial.printf("[X] OK followers=%ld name=%s\n", g_state.x.followers, g_state.x.name);
-        net_unlock();
-      }
-    } else { setStatus("X: JSON err"); }
-  } else if (code == 401 || code == 403) {
-    setStatus((String("X auth ") + code).c_str());   // token/tier
-  } else {
-    setStatus((String("X HTTP ") + code).c_str());
-  }
-  https.end();
-}
-
 // ---------- Task de red ----------
 static void netTask(void *pv) {
   Serial.println("\n[net] netTask iniciado");
@@ -162,35 +115,15 @@ static void netTask(void *pv) {
     setStatus("WiFi sin conexion");
   }
 
-  const uint32_t WX_MS     = 10UL * 60UL * 1000UL;  // clima: auto cada 10 min (GRATIS)
-  const uint32_t X_MIN_GAP = 60UL * 1000UL;         // X: máx 1 llamada/min aunque se pida seguido
-  uint32_t lastWx = 0, lastX = 0;
+  const uint32_t WX_MS = 10UL * 60UL * 1000UL;  // clima: auto cada 10 min (GRATIS)
+  uint32_t lastWx = 0;
   bool firstWx = true;
   for (;;) {
     if (WiFi.status() == WL_CONNECTED) {
-      // Refresco diario de X a las 7:00am (1 llamada/día garantizada)
-      static int lastDailyYday = -1;
-      struct tm tnow;
-      if (getLocalTime(&tnow, 0) && tnow.tm_hour == 7 && tnow.tm_yday != lastDailyYday) {
-        lastDailyYday = tnow.tm_yday;
-        s_reqX = true;
-        Serial.println("[X] refresco diario 7am");
-      }
-      // Clima: automático (gratis) o a demanda
+      // Clima: automático (gratis) o a demanda. El reloj lo da NTP (arriba).
       if (firstWx || s_reqWx || millis() - lastWx > WX_MS) {
         fetchWeather();
         lastWx = millis(); firstWx = false; s_reqWx = false;
-      }
-      // X: SOLO a demanda (arranque + cuando se pide), con tope de 1/min para no gastar
-      if (s_reqX) {
-        s_reqX = false;
-        if (lastX == 0 || millis() - lastX > X_MIN_GAP) {
-          fetchX();
-          lastX = millis();
-          setStatus("Actualizado");
-        } else {
-          Serial.println("[X] peticion ignorada (tope 1/min)");
-        }
       }
     } else {
       if (net_lock(20)) { g_state.wifiUp = false; net_unlock(); }

@@ -14,7 +14,6 @@
 #include "app_ui.h"
 #include "app_hue.h"
 #include "app_markets.h"
-#include "app_server.h"
 #include "app_wol.h"
 
 LGFX gfx;
@@ -176,7 +175,6 @@ void setup() {
   net_begin();   // WiFi + NTP + clima + X en su propio task (core 0)
   hue_begin();   // Philips Hue en su propio task (core 0)
   markets_begin(); // Mercados (cripto) en su propio task (core 0)
-  server_begin();  // Salud del Mac Mini en su propio task (core 0)
   pc_status_begin(); // Estado directo de la PC gamer (task persistente, core 0)
 
   g_lastActivity = millis();   // arranca el contador de inactividad

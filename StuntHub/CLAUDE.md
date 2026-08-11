@@ -1,31 +1,52 @@
 # StuntHub — Perilla personal de Jose (bunker)
 
-Dashboard de 7 apps en la CrowPanel redonda. Antes de tocar nada: lee
-`../CLAUDE.md` (reglas duras + build). HOY este firmware NO esta flasheado en
-ninguna placa (la unica placa fisica corre TMEhub); se restaura cuando llegue
-la CrowPanel #2 — binario listo en `../backup/stunthub_v2_bin/`.
+Aparato centrado en MUSICA (VinilOS) con 4 apps de apoyo, en la CrowPanel
+redonda. Antes de tocar nada: lee `../CLAUDE.md` (reglas duras + build +
+CROWN Interface Guidelines).
+
+## ⚠️ Particion de 8MB (NO uses el comando de build generico)
+Desde la integracion de VinilOS el firmware usa `vnl1_8M` (huge_app de 3MB ya
+no alcanza con las caratulas). SIEMPRE compilar/flashear asi:
+```bash
+arduino-cli compile --fqbn "esp32:esp32:esp32s3:PSRAM=opi,FlashSize=16M,PartitionScheme=huge_app,USBMode=hwcdc,CDCOnBoot=cdc" \
+  --build-property build.partitions=vnl1_8M \
+  --build-property upload.maximum_size=8388608 .
+```
+StuntHub no guarda nada en NVS, asi que cambiar de particion no pierde datos.
 
 ## Navegacion
 Girar perilla = cambiar app (animacion slide). Push corto = entrar/accion.
 Push largo = atras. Tactil = botones en apps que los tienen + despertar.
 Sleep 30s. Brillo: 70% dia / 25% de 10pm a 7am (NTP).
 
-## Las 7 apps (app_ui.cpp, NUM_APPS=7)
+## Las apps (app_ui.cpp)
+El orden del menu son los `#define APP_*` al inicio de app_ui.cpp: mover o
+insertar una app = cambiar esa lista, NO cazar numeros por el archivo.
+
 | # | App | Fuente de datos | Push |
 |---|-----|------|------|
-| 0 | Clima MTY + reloj 12h | Open-Meteo (lat/lon en secrets) | detalle: lluvia prox 5h |
-| 1 | X @stuntech | api.x.com/2 + bearer (secrets); refresh 7am + on-demand | detalle: bio |
-| 2 | Luces Hue | Bridge local 192.168.86.49 (44 focos/17 cuartos) | 5 vistas: cover->favoritos BUNKER (Relax/Blanco/Fiesta tactiles; Fiesta=2rojos+2azules)->cuartos->focos->control |
-| 3 | Mercados | CoinGecko BTC/ETH/SOL c/5min (retry 30s) | refresh |
-| 4 | Servidor | health.json del Mac Mini (192.168.86.66:8765, regenera c/60s) | refresh |
-| 5 | Wallpapers | GIFs embebidos DBZ/Pokemon/Zelda (180px + zoom 2x = full 360) | siguiente GIF |
-| 6 | PC Gamer | estado: gamer_pc.online del health.json | push: prender(WoL)/apagar; + botones tactiles Normal/Sim/TV (perfiles monitor+audio, solo online) |
+| 0 | Luces Hue | Bridge local 192.168.86.49 (44 focos/17 cuartos) | 5 vistas: cover->favoritos BUNKER (Relax/Blanco/Fiesta tactiles; Fiesta=2rojos+2azules)->cuartos->focos->control |
+| 1 | Mercados | CoinGecko BTC/ETH/SOL c/5min (retry 30s) | refresh |
+| 2 | PC Gamer | poll DIRECTO al agente :8767/status c/3s | push: prender(WoL)/apagar; menu navegable + modos Normal/Sim/TV (solo con PC lista) |
+| 3 | Fotos | GIFs embebidos DBZ/Pokemon/Zelda (180px + zoom 2x = full 360) | siguiente GIF |
+
+**VinilOS (musica) entra como app 2** en la etapa 4, empujando PC a 3 y Fotos a 4.
+
+### Apps eliminadas (ago-2026, pivote a aparato musical)
+Clima, X @stuntech y Servidor (Mac Mini). Recuperables del historial de git.
+- El **reloj+clima** de la app Clima vuelve como **REPOSO** del aparato (etapa 5):
+  inactivo sin musica -> reloj con fecha y clima; con musica -> disco girando.
+  `app_net` SIGUE trayendo NTP + Open-Meteo aunque hoy nadie lo pinte.
+- **X se fue completo** (fetchX, XProfile, s_reqX): un TLS menos en el core 0.
+  Las llaves X_BEARER_TOKEN/X_USERNAME quedan en secrets.h sin uso.
+- **Servidor** (`app_server.*`) borrado. PC Gamer ya NO depende del health.json:
+  su bloque en ui_tick estaba ANIDADO dentro de `if (server_lock(10))` y se
+  desanido. OJO si restauras algo de esa app: ese anidamiento era el acople.
 
 ## Modulos
-- `app_net.cpp` — clima + X (TLS con certs.h ISRG Root X1). Task core 0.
+- `app_net.cpp` — NTP + clima Open-Meteo (TLS con certs.h ISRG Root X1). Task core 0.
 - `app_hue.cpp` — API v1 del bridge, queue de comandos, ArduinoJson filter.
 - `app_markets.cpp` — CoinGecko. setHandshakeTimeout(15) obligatorio.
-- `app_server.cpp` — health del Mac Mini (HTTP plano LAN).
 - `app_wol.cpp` — magic packet DIRECTO (UDP broadcast 192.168.86.255:9,7 x3,
   MAC en secrets) + apagado via pc_agent (agents/pc_agent.ps1 corre en la PC
   gamer, puerto 8767, token; POST /shutdown con cuerpo "{}" — 411 si no).
@@ -45,13 +66,10 @@ Sleep 30s. Brillo: 70% dia / 25% de 10pm a 7am (NTP).
 - Hue bridge: .49.
 
 ## Gotchas propios
-- Boot: los task de red ESCALONADOS (clima 0s, X ~3s, servidor 7s, mercados
-  14s) — 3 TLS simultaneos en core 0 = task_wdt + boot loop. Si agregas app
-  de red nueva, dale su slot.
+- Boot: los task de red ESCALONADOS — 3 TLS simultaneos en core 0 = task_wdt +
+  boot loop. Al quitar X y Servidor quedan pocos (clima, mercados, Hue y el
+  poll de la PC), pero la regla sigue: si agregas app de red nueva, dale su slot.
 - deserializeJson SIEMPRE desde getString(), nunca getStream() (falla mudo).
-- health.json chequea la PC gamer con TCP-connect a :8767, no ping.
-- gamer_pc "done"/estado viejo: la UI de PC Gamer verifica transiciones, no
-  estados absolutos.
 - Wallpapers a 360 nativo = NO (8x CPU, +1.5MB); el zoom 2x es la decision.
 - PERFILES PC (Normal/Sim/TV): pc_agent corre como SYSTEM (sesion 0). Los .ps1
   de perfil cambian DISPLAY/AUDIO y abren Steam = REQUIEREN sesion interactiva;
