@@ -185,6 +185,7 @@ static void drawDisc() {
 // Biblioteca (true): la caratula llena el disco, quieto. Reproduccion (false):
 // vinilo con etiqueta, que si puede girar sin que se caigan los fps.
 void vinyl_set_dots(uint8_t total, uint8_t actual, uint32_t color) {
+  if (!disc) return;
   if (total == dotsN && actual == dotsCur && color == dotsColor) return;
   dotsN = total; dotsCur = actual; dotsColor = color;
   if (!modoCover) drawDisc();
@@ -194,6 +195,7 @@ void vinyl_set_dots(uint8_t total, uint8_t actual, uint32_t color) {
 // completo tanto hojeando como reproduciendo. Lo unico que cambia entre los
 // dos estados es el tamano del disco y si gira.
 void vinyl_cover_mode(bool on) {
+  if (!disc) return;
   (void)on;
 }
 
@@ -353,6 +355,23 @@ bool vinyl_create(lv_obj_t* parent) {
   return true;
 }
 
+bool vinyl_alive() { return disc != nullptr; }
+
+void vinyl_destroy() {
+  if (!disc) return;
+  // Las animaciones apuntan a los objetos: matarlas ANTES de borrarlos, o el
+  // callback escribe sobre memoria liberada en el siguiente frame.
+  lv_anim_del(label, nullptr);
+  lv_anim_del(disc,  nullptr);
+  lv_obj_del(marca);  marca = nullptr;
+  lv_obj_del(label);  label = nullptr;
+  lv_obj_del(disc);   disc  = nullptr;
+  heap_caps_free(labelBuf); labelBuf = nullptr;
+  heap_caps_free(discBuf);  discBuf  = nullptr;
+  // Estado de movimiento a cero: al recrear se arranca limpio, no a media vuelta.
+  spinWanted = false; rpmCur = 0.0f; angle = 0.0f;
+}
+
 static void fadeInLabel() {
   lv_obj_set_style_img_opa(label, LV_OPA_40, 0);
   lv_anim_t a;
@@ -374,6 +393,7 @@ static void drawLabel(uint8_t idx) {
 
 void vinyl_set_custom(const char* name, const char* sub, uint32_t color,
                       bool animate, const uint16_t* cover) {
+  if (!disc) return;
   coverAct = cover;
   drawDisc();
   drawLabelRaw(name, sub, color, cover);
@@ -382,6 +402,7 @@ void vinyl_set_custom(const char* name, const char* sub, uint32_t color,
 }
 
 void vinyl_set_album(uint8_t idx, bool animate) {
+  if (!disc) return;
   if (idx >= ALBUM_COUNT) return;
   curAlbum = idx;
 #if COVERS_AL_DIA
@@ -396,6 +417,7 @@ void vinyl_set_album(uint8_t idx, bool animate) {
 }
 
 void vinyl_set_spinning(bool on) {
+  if (!disc) return;
   if (!on && spinWanted && (rpmCur > 0.5f || angle > 0.5f)) {
     asentaIni = angle;
     float faltan = 360.0f - angle;
@@ -429,6 +451,7 @@ static void applyZoom() {
 }
 
 void vinyl_zoom_to(uint8_t pct, uint16_t ms) {
+  if (!disc) return;
   uint16_t tgt = (uint16_t)(256UL * pct / 100);
   lv_anim_del(&baseZoom, nullptr);
   lv_anim_t a;
@@ -447,6 +470,7 @@ void vinyl_zoom_to(uint8_t pct, uint16_t ms) {
 uint8_t vinyl_zoom() { return (uint8_t)(baseZoom * 100UL / 256); }
 
 void vinyl_bump() {
+  if (!disc) return;
   lv_anim_t a;
   lv_anim_init(&a);
   lv_anim_set_var(&a, label);
@@ -490,6 +514,7 @@ static void marcaVisible(bool on) {
 }
 
 void vinyl_tick() {
+  if (!disc) return;
   uint32_t now = millis();
   float dt = (now - lastMs) / 1000.0f;
   lastMs = now;

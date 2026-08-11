@@ -10,6 +10,14 @@
 
 bool vinyl_create(lv_obj_t* parent);
 
+// Suelta los canvas y los 120KB de RAM INTERNA de la etiqueta. Se llama al
+// salir de la app de musica (o al dormir la pantalla): esa RAM es la misma que
+// necesita el TLS de las otras apps, y con el vinilo residente el colchon del
+// firmware bajaba de 195KB a 64KB. Mismo patron que el GIF de Fotos.
+// Tras esto, TODA la API del modulo es no-op hasta el siguiente vinyl_create().
+void vinyl_destroy();
+bool vinyl_alive();
+
 // Encoge y regresa la etiqueta en 180ms. Es el feedback inmediato al apretar,
 // lo que tapa la ventana de 260ms del doble push.
 void vinyl_bump();

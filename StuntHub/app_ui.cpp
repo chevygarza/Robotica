@@ -83,6 +83,8 @@ static int8_t   musLoaded = -1;               // disco que suena (-1 = ninguno)
 static uint8_t  musTrackIx = 0;
 static bool     musPaused = false;
 static uint32_t musVolUntil = 0;
+static void musVinylOn();     // reserva perezosa: definidas mas abajo, pero
+static void musVinylOff();    // ui_screen_off/on (arriba) ya las necesita
 
 // --- PC Gamer: cover + menu navegable con la perilla ---
 enum PgView { PG_COVER, PG_MENU, PG_WAKING, PG_OFFING };
@@ -443,12 +445,12 @@ static void wallShow(bool on) {
 // pantalla, no el aparato. Por eso aqui no se toca el player.
 void ui_screen_off() {
   wallShow(false);
-  vinyl_set_spinning(false);
+  musVinylOff();          // suelta los canvas del vinilo (120KB internos)
 }
 void ui_screen_on() {
   wallShow(curApp == APP_FOTOS);
-  // Retoma el giro solo si seguia sonando y estabas en el plato.
-  if (curApp == APP_MUSICA && musView == MV_PLAY && !musPaused) vinyl_set_spinning(true);
+  // Rehace el vinilo y restaura la vista (incluido el giro si seguia sonando).
+  if (curApp == APP_MUSICA && musView != MV_COVER) musVinylOn();
 }
 
 static void buildWallpaperScreen() {
@@ -635,8 +637,9 @@ static void buildMusicScreen() {
   lv_obj_set_style_bg_opa(s, LV_OPA_COVER, 0);
   lv_obj_clear_flag(s, LV_OBJ_FLAG_SCROLLABLE);
   musScr = s;
-
-  vinyl_create(s);
+  // El vinilo NO se crea aqui: sus canvas piden 120KB de RAM INTERNA (la misma
+  // que el TLS de clima/mercados). Se reserva al entrar y se suelta al salir o
+  // al dormir — mismo patron que el GIF de Fotos.
 
   // Biblioteca: nombre arriba (el disco al 62% deja libre esa franja y respeta
   // el safe area; abajo la curva se come el texto).
@@ -717,6 +720,39 @@ static void musRefreshLib() {
     snprintf(b, sizeof(b), "%d temas  -  %d min", a.tracks, mins);
   lv_label_set_text(musSub, b);
   vinyl_set_album(musSel, true);
+}
+
+// Reserva perezosa del vinilo. Devuelve la vista a como estaba: al recrear, el
+// modulo arranca en cero (zoom 100, sin girar), no a media vuelta.
+static void musVinylOn() {
+  if (vinyl_alive()) return;
+  if (!vinyl_create(musScr)) { Serial.println("[mus] sin memoria para el vinilo"); return; }
+  // vinyl_create cuelga sus canvas al final de la pantalla: quedarian ENCIMA de
+  // las etiquetas, que se crearon antes. Se suben las capas de texto.
+  lv_obj_move_foreground(musName);
+  lv_obj_move_foreground(musSub);
+  lv_obj_move_foreground(musCard);
+  lv_obj_move_foreground(musVol);
+
+  Serial.printf("[mus] vinilo creado  heap=%u\n", (unsigned)ESP.getFreeHeap());
+  uint8_t disco = (musView == MV_PLAY && musLoaded >= 0) ? (uint8_t)musLoaded : musSel;
+  vinyl_set_album(disco, false);
+  if (musView == MV_PLAY) {
+    vinyl_zoom_to(100, 1);
+    vinyl_cover_mode(false);
+    vinyl_set_dots(ALBUMS[disco].tracks, musTrackIx, ALBUMS[disco].color);
+    vinyl_set_spinning(!musPaused);
+  } else {
+    vinyl_zoom_to(62, 1);
+    vinyl_cover_mode(true);
+    vinyl_set_spinning(false);
+  }
+}
+
+static void musVinylOff() {
+  if (!vinyl_alive()) return;
+  vinyl_destroy();
+  Serial.printf("[mus] vinilo liberado heap=%u\n", (unsigned)ESP.getFreeHeap());
 }
 
 // Biblioteca: la camara se aleja y el disco muestra la caratula completa.
@@ -826,6 +862,8 @@ void ui_select() {
   // --- App Musica (VinilOS): portada -> biblioteca -> reproducir/pausa ---
   if (curApp == APP_MUSICA) {
     if (musView == MV_COVER) {                    // portada -> biblioteca
+      musView = MV_LIB;                           // musVinylOn lee la vista
+      musVinylOn();
       musGoLib();
       lv_scr_load_anim(musScr, LV_SCR_LOAD_ANIM_OVER_LEFT, 250, 0, false);
     } else if (musView == MV_LIB) {               // disco -> reproducir
@@ -964,6 +1002,7 @@ void ui_back() {
       musGoLib();                                 // la musica SIGUE sonando
     } else {                                      // biblioteca -> portada
       musView = MV_COVER;
+      musVinylOff();                              // devuelve la RAM interna
       lv_scr_load_anim(ovScr[APP_MUSICA], LV_SCR_LOAD_ANIM_OVER_RIGHT, 250, 0, false);
     }
     return;

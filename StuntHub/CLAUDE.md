@@ -79,6 +79,21 @@ Clima, X @stuntech y Servidor (Mac Mini). Recuperables del historial de git.
   app_wol = espejo de pc_shutdown_async, POST /<path>?t=token (path=normal|sim|tv).
   Los modos solo se muestran/funcionan con la PC online (g_srv.pc_online).
 
+- VINILO Y RAM INTERNA: los canvas de vinyl.cpp piden ~120KB de RAM **interna**
+  (labelBuf, 200x200 TRUE_COLOR_ALPHA; el disco de 336px si va a PSRAM). Es la
+  MISMA RAM que necesita el TLS de clima/mercados. Con el vinilo residente el
+  heap caia de 148KB a **19KB** durante un handshake — funcionaba, pero sin
+  colchon. SOLUCION: reserva perezosa (musVinylOn/Off en app_ui) — se crea al
+  entrar a la app y se suelta al salir o al dormir. Medido: 139KB con el arreglo.
+  `vinyl_destroy()` mata las animaciones ANTES de borrar los objetos (si no, el
+  callback escribe sobre memoria liberada) y toda la API queda blindada con
+  `if (!disc) return;`. Al recrear hay que restaurar zoom/cover_mode/spinning y
+  SUBIR las capas de texto (lv_obj_move_foreground): los canvas nuevos quedan
+  encima de las etiquetas creadas antes.
+- player.h PROMETE que player_begin() devuelve false sin modulo y todo se vuelve
+  no-op. NO ES CIERTO: siempre retorna true (con isACK=false no hay forma de
+  preguntarle nada al DFPlayer). La UI no puede saber si hay audio.
+
 ## Pendientes
 - Comprar CrowPanel #2 -> restaurar StuntHub en la placa original.
 - Reserva DHCP de la PC gamer (.56) en el Google Home de la casa.
