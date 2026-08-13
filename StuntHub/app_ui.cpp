@@ -1,4 +1,5 @@
 #include "app_ui.h"
+#include "ui_theme.h"
 #include "app_net.h"
 #include "app_hue.h"
 #include "app_markets.h"
@@ -18,19 +19,6 @@ extern "C" {
   extern const uint8_t zelda_gif[];   extern const unsigned int zelda_gif_len;
 }
 
-// ---------- Paleta ----------
-#define COL_BG     lv_color_hex(0x0B1020)
-#define COL_CARD   lv_color_hex(0x161C2E)
-#define COL_TXT    lv_color_hex(0xFFFFFF)
-#define COL_SUB    lv_color_hex(0x8A93A6)
-#define COL_ACCENT lv_color_hex(0x4EA8FF)
-#define COL_WARM   lv_color_hex(0xFFB454)
-#define COL_OK     lv_color_hex(0x3DD68C)
-#define COL_BAD    lv_color_hex(0xFF5B6E)
-
-// ---------- Orden del menu (lo que recorre el giro) ----------
-// Indices con nombre: insertar/mover una app es cambiar esta lista, no cazar
-// numeros por todo el archivo. VinilOS entra aqui en la etapa 4.
 #define APP_LUCES     0
 #define APP_MERCADOS  1
 #define APP_MUSICA    2
@@ -118,17 +106,17 @@ static bool pcReady() {
 // --- dots ---
 static lv_obj_t *dots[NUM_APPS][NUM_APPS];
 
+// Envoltorio historico sobre uiLabel: opacidad completa. Para texto secundario
+// NO se usa un color gris (COL_SUB murio con INTERFAZ.md §7): se usa uiLabel
+// con OPA_AVAIL_LABEL.
 static lv_obj_t* mkLabel(lv_obj_t *p, const lv_font_t *font, lv_color_t color) {
-  lv_obj_t *l = lv_label_create(p);
-  lv_obj_set_style_text_font(l, font, 0);
-  lv_obj_set_style_text_color(l, color, 0);
-  return l;
+  return uiLabel(p, font, color, LV_OPA_COVER);
 }
 
 static lv_obj_t* mkCard(lv_obj_t *p, int w, int h) {
   lv_obj_t *c = lv_obj_create(p);
   lv_obj_set_size(c, w, h);
-  lv_obj_set_style_bg_color(c, COL_CARD, 0);
+  lv_obj_set_style_bg_color(c, COL_SURFACE, 0);
   lv_obj_set_style_bg_opa(c, LV_OPA_COVER, 0);
   lv_obj_set_style_border_width(c, 0, 0);
   lv_obj_set_style_radius(c, 16, 0);
@@ -151,7 +139,7 @@ static void buildDots(lv_obj_t *p, int idx) {
     lv_obj_set_size(d, 8, 8);
     lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_border_width(d, 0, 0);
-    lv_obj_set_style_bg_color(d, (i == idx) ? COL_ACCENT : COL_SUB, 0);
+    lv_obj_set_style_bg_color(d, (i == idx) ? COL_ACCENT : COL_TXT, 0);
     lv_obj_set_style_bg_opa(d, (i == idx) ? LV_OPA_COVER : LV_OPA_40, 0);
     lv_obj_align(d, LV_ALIGN_BOTTOM_MID, (i * 2 - (NUM_APPS - 1)) * 8, -18);
     lv_obj_clear_flag(d, LV_OBJ_FLAG_SCROLLABLE);
@@ -185,7 +173,7 @@ static void buildHueCover() {
   lv_label_set_text(wm, "hue");
   lv_obj_align(wm, LV_ALIGN_CENTER, 0, 26);
 
-  hueCoverInfo = mkLabel(s, &lv_font_montserrat_14, COL_SUB);
+  hueCoverInfo = uiLabel(s, &lv_font_montserrat_14, COL_TXT, OPA_AVAIL_LABEL);
   lv_obj_set_style_text_align(hueCoverInfo, LV_TEXT_ALIGN_CENTER, 0);
   lv_label_set_text(hueCoverInfo, "Philips Hue");
   lv_obj_align(hueCoverInfo, LV_ALIGN_CENTER, 0, 54);
@@ -217,7 +205,7 @@ static void buildHueMenuScreen() {
 
   // Sin hint en la curva inferior (ilegible en pantalla redonda): los gestos
   // perilla/push/manten son convencion global del CROWN. Ver design system.
-  hueHint = mkLabel(s, &lv_font_montserrat_12, COL_SUB);
+  hueHint = uiLabel(s, &lv_font_montserrat_12, COL_TXT, OPA_AVAIL_LABEL);
   lv_label_set_text(hueHint, "");
   lv_obj_align(hueHint, LV_ALIGN_TOP_MID, 0, 40);
 }
@@ -308,18 +296,9 @@ static Fav FAVS[3] = {
 };
 static int  favActive = -1;
 static lv_obj_t *hueFavScr;
-static lv_obj_t *favBtn[3], *favLbl[3];
+static void updateFavColors();   // definida con la lista de favoritos
 
-static void updateFavColors() {
-  for (int i = 0; i < 3; i++) {
-    bool on = (favActive == i);
-    lv_obj_set_style_bg_color(favBtn[i], on ? lv_color_hex(FAVS[i].activeHex) : COL_CARD, 0);
-    lv_obj_set_style_text_color(favLbl[i], on ? COL_BG : COL_TXT, 0);
-  }
-}
-
-static void favCb(lv_event_t *e) {
-  int i = (int)(intptr_t)lv_event_get_user_data(e);
+static void favActivate(int i) {
   if (favActive == i) {                                   // tap de nuevo = apagar
     hue_set(true, FAVS[i].group, 0, -1, HUE_NONE);
     favActive = -1;
@@ -348,52 +327,32 @@ static void favCb(lv_event_t *e) {
   updateFavColors();
 }
 
-static void otrosCb(lv_event_t *e) {
-  hueView = HV_ROOMS; hueSel = 0; hueRoomSel = 0;
-  hue_request_rooms();
-  hueEnterRooms();
-  lv_scr_load_anim(hueMenuScr, LV_SCR_LOAD_ANIM_OVER_LEFT, 250, 0, false);
+// Favoritos del Bunker. ERAN tres botones tactiles; INTERFAZ.md apaga el dedo
+// (§3) y exige que todo menu sea una lista vertical (§4, regla 3). El estado
+// activo, que antes se veia pintando el boton, ahora es la columna de valor.
+static const int FAV_ROWS = 4;                 // 3 escenas + "Otros Cuartos"
+static lv_obj_t *favRow[FAV_ROWS];
+
+static void updateFavColors() {
+  for (int i = 0; i < 3; i++)
+    lv_label_set_text(uiRowValue(favRow[i]), (favActive == i) ? "Encendido" : "");
+}
+
+static void hueFavHighlight() {
+  for (int i = 0; i < FAV_ROWS; i++) uiRowFocus(favRow[i], i == hueSel, false, false);
 }
 
 static void buildHueFavs() {
   lv_obj_t *s = newScreen();
   hueFavScr = s;
 
-  lv_obj_t *ttl = mkLabel(s, &lv_font_montserrat_28, COL_TXT);
-  lv_label_set_text(ttl, "BUNKER");
-  lv_obj_align(ttl, LV_ALIGN_TOP_MID, 0, 40);
-
-  const int BW = 84, BH = 84, GAP = 8;
-  int total = BW * 3 + GAP * 2;
-  int startX = -(total / 2) + BW / 2;
-  for (int i = 0; i < 3; i++) {
-    lv_obj_t *b = lv_btn_create(s);
-    lv_obj_set_size(b, BW, BH);
-    lv_obj_align(b, LV_ALIGN_CENTER, startX + i * (BW + GAP), -6);
-    lv_obj_set_style_radius(b, 18, 0);
-    lv_obj_set_style_bg_color(b, COL_CARD, 0);
-    lv_obj_set_style_shadow_width(b, 0, 0);
-    lv_obj_add_event_cb(b, favCb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
-    lv_obj_t *l = mkLabel(b, &lv_font_montserrat_16, COL_TXT);
-    lv_label_set_text(l, FAVS[i].label);
-    lv_obj_center(l);
-    favBtn[i] = b; favLbl[i] = l;
-  }
-
-  lv_obj_t *otros = lv_btn_create(s);
-  lv_obj_set_size(otros, 244, 44);
-  lv_obj_align(otros, LV_ALIGN_CENTER, 0, 80);
-  lv_obj_set_style_radius(otros, 14, 0);
-  lv_obj_set_style_bg_color(otros, COL_BG, 0);
-  lv_obj_set_style_border_width(otros, 1, 0);
-  lv_obj_set_style_border_color(otros, COL_SUB, 0);
-  lv_obj_set_style_shadow_width(otros, 0, 0);
-  lv_obj_add_event_cb(otros, otrosCb, LV_EVENT_CLICKED, NULL);
-  lv_obj_t *ol = mkLabel(otros, &lv_font_montserrat_16, COL_SUB);
-  lv_label_set_text(ol, "Otros cuartos  " LV_SYMBOL_RIGHT);
-  lv_obj_center(ol);
+  uiTitle(s, "Luces");
+  lv_obj_t *box = uiListBox(s);
+  for (int i = 0; i < 3; i++) favRow[i] = uiRow(box, FAVS[i].label, "");
+  favRow[3] = uiRow(box, "Otros Cuartos", LV_SYMBOL_RIGHT);
 
   updateFavColors();
+  hueFavHighlight();
 }
 
 // ---------- App: Mercados (cripto) ----------
@@ -414,7 +373,7 @@ static void buildMarketsScreen() {
     lv_obj_t *pr = mkLabel(row, &lv_font_montserrat_16, COL_TXT);
     lv_label_set_text(pr, "--");
     lv_obj_align(pr, LV_ALIGN_RIGHT_MID, -6, -9);
-    lv_obj_t *ch = mkLabel(row, &lv_font_montserrat_12, COL_SUB);
+    lv_obj_t *ch = uiLabel(row, &lv_font_montserrat_12, COL_TXT, OPA_AVAIL_LABEL);
     lv_label_set_text(ch, "--");
     lv_obj_align(ch, LV_ALIGN_RIGHT_MID, -6, 10);
     mktSym[i] = sym; mktPrice[i] = pr; mktChg[i] = ch;
@@ -469,7 +428,7 @@ static void buildWallpaperScreen() {
 
   // (el GIF se crea al entrar a la app via wallShow)
 
-  wallName = mkLabel(s, &lv_font_montserrat_14, COL_SUB);
+  wallName = uiLabel(s, &lv_font_montserrat_14, COL_TXT, OPA_AVAIL_LABEL);
   lv_label_set_text(wallName, wallNames[0]);
   lv_obj_align(wallName, LV_ALIGN_BOTTOM_MID, 0, -38);
 
@@ -491,7 +450,8 @@ static void pgApplyHighlight() {
     bool locked = isMode && !ready;          // perfil bloqueado durante el boot
     lv_obj_set_style_bg_color(pgItems[i], COL_ACCENT, 0);
     lv_obj_set_style_bg_opa(pgItems[i], (sel && !locked) ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
-    lv_obj_set_style_text_color(pgItems[i], locked ? COL_SUB : (sel ? COL_BG : COL_TXT), 0);
+    lv_obj_set_style_text_color(pgItems[i], sel ? COL_BG : COL_TXT, 0);
+    lv_obj_set_style_text_opa(pgItems[i], locked ? OPA_INACTIVE : LV_OPA_COVER, 0);
   }
 }
 
@@ -550,7 +510,7 @@ static void buildGamerMenu() {
   lv_obj_clear_flag(pgMenuBox, LV_OBJ_FLAG_SCROLLABLE);
 
   // Feedback/estado: debajo del titulo (zona visible del circulo), vacio en reposo.
-  pgMenuHint = mkLabel(s, &lv_font_montserrat_14, COL_SUB);
+  pgMenuHint = uiLabel(s, &lv_font_montserrat_14, COL_TXT, OPA_AVAIL_LABEL);
   lv_label_set_text(pgMenuHint, "");
   lv_obj_align(pgMenuHint, LV_ALIGN_TOP_MID, 0, 52);
 }
@@ -566,12 +526,12 @@ static void buildGamerScreen() {
   lv_obj_t *ring = lv_obj_create(s);
   lv_obj_set_size(ring, 110, 110);
   lv_obj_set_style_radius(ring, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_bg_color(ring, COL_CARD, 0);
+  lv_obj_set_style_bg_color(ring, COL_SURFACE, 0);
   lv_obj_set_style_border_width(ring, 3, 0);
   lv_obj_set_style_border_color(ring, COL_ACCENT, 0);
   lv_obj_clear_flag(ring, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_align(ring, LV_ALIGN_CENTER, 0, -24);
-  pgIcon = mkLabel(ring, &lv_font_montserrat_48, COL_SUB);
+  pgIcon = uiLabel(ring, &lv_font_montserrat_48, COL_TXT, OPA_AVAIL_LABEL);
   lv_label_set_text(pgIcon, LV_SYMBOL_POWER);
   lv_obj_center(pgIcon);
 
@@ -579,7 +539,8 @@ static void buildGamerScreen() {
   lv_obj_set_size(pgDot, 10, 10);
   lv_obj_set_style_radius(pgDot, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_border_width(pgDot, 0, 0);
-  lv_obj_set_style_bg_color(pgDot, COL_SUB, 0);
+  lv_obj_set_style_bg_color(pgDot, COL_TXT, 0);
+  lv_obj_set_style_bg_opa(pgDot, OPA_INACTIVE, 0);
   lv_obj_clear_flag(pgDot, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_align(pgDot, LV_ALIGN_CENTER, -56, 56);
 
@@ -587,7 +548,7 @@ static void buildGamerScreen() {
   lv_label_set_text(pgStatus, "Consultando...");
   lv_obj_align(pgStatus, LV_ALIGN_CENTER, 8, 56);
 
-  pgHint = mkLabel(s, &lv_font_montserrat_14, COL_SUB);
+  pgHint = uiLabel(s, &lv_font_montserrat_14, COL_TXT, OPA_AVAIL_LABEL);
   lv_label_set_long_mode(pgHint, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(pgHint, 250);
   lv_obj_set_style_text_align(pgHint, LV_TEXT_ALIGN_CENTER, 0);
@@ -617,7 +578,7 @@ static void buildMusicCover() {
   lv_label_set_text(wm, "VinilOS");
   lv_obj_align(wm, LV_ALIGN_CENTER, 0, 60);
 
-  lv_obj_t *info = mkLabel(s, &lv_font_montserrat_14, COL_SUB);
+  lv_obj_t *info = uiLabel(s, &lv_font_montserrat_14, COL_TXT, OPA_AVAIL_LABEL);
   char b[40]; snprintf(b, sizeof(b), "%d discos", (int)ALBUM_COUNT);
   lv_label_set_text(info, b);
   lv_obj_align(info, LV_ALIGN_CENTER, 0, 88);
@@ -648,7 +609,7 @@ static void buildMusicScreen() {
   lv_label_set_text(musName, "");
   lv_obj_align(musName, LV_ALIGN_TOP_MID, 0, 42);
 
-  musSub = mkLabel(s, &lv_font_montserrat_12, COL_SUB);
+  musSub = uiLabel(s, &lv_font_montserrat_12, COL_TXT, OPA_AVAIL_LABEL);
   lv_obj_set_style_text_align(musSub, LV_TEXT_ALIGN_CENTER, 0);
   lv_label_set_text(musSub, "");
   lv_obj_align(musSub, LV_ALIGN_TOP_MID, 0, 68);
@@ -672,14 +633,14 @@ static void buildMusicScreen() {
   lv_label_set_text(musTrack, "");
   lv_obj_align(musTrack, LV_ALIGN_TOP_MID, 0, 6);
 
-  musArtist = mkLabel(musCard, &lv_font_montserrat_12, COL_SUB);
+  musArtist = uiLabel(musCard, &lv_font_montserrat_12, COL_TXT, OPA_AVAIL_LABEL);
   lv_label_set_long_mode(musArtist, LV_LABEL_LONG_DOT);
   lv_obj_set_width(musArtist, 280);
   lv_obj_set_style_text_align(musArtist, LV_TEXT_ALIGN_CENTER, 0);
   lv_label_set_text(musArtist, "");
   lv_obj_align(musArtist, LV_ALIGN_TOP_MID, 0, 32);
 
-  musVol = mkLabel(s, &lv_font_montserrat_20, COL_WARM);
+  musVol = mkLabel(s, &lv_font_montserrat_20, COL_WARN);
   lv_label_set_text(musVol, "");
   lv_obj_align(musVol, LV_ALIGN_TOP_MID, 0, 46);
   lv_obj_add_flag(musVol, LV_OBJ_FLAG_HIDDEN);
@@ -837,7 +798,13 @@ void ui_nav(int dir) {
     return;
   }
   if (curApp == APP_LUCES && hueView != HV_NONE) { // navegando listas de Hue
-    if (hueView == HV_FAVS) return;               // favoritos = táctil, el giro no aplica
+    if (hueView == HV_FAVS) {                     // ahora es lista navegable
+      hueSel += dir;
+      if (hueSel < 0) hueSel = FAV_ROWS - 1;
+      if (hueSel >= FAV_ROWS) hueSel = 0;
+      hueFavHighlight();
+      return;
+    }
     if (hueItemCount <= 0) return;
     hueSel += dir;
     if (hueSel < 0) hueSel = 0;
@@ -900,7 +867,7 @@ void ui_select() {
         pc_profile_async(PG_PATHS[a - PA_NORMAL]);
         pgProfileItem = pgSel;                             // item en curso (espera resultado)
         lv_obj_set_style_bg_opa(pgItems[pgSel], LV_OPA_TRANSP, 0);
-        lv_obj_set_style_text_color(pgItems[pgSel], COL_WARM, 0);
+        lv_obj_set_style_text_color(pgItems[pgSel], COL_WARN, 0);
         lv_label_set_text(pgMenuHint, "Enviando...");
         return;
       }
@@ -944,7 +911,8 @@ void ui_select() {
       hueView = HV_FAVS;
       hue_request_rooms();                         // precarga focos (para Fiesta individual)
       lv_scr_load_anim(hueFavScr, LV_SCR_LOAD_ANIM_OVER_LEFT, 250, 0, false);
-    } else if (hueView == HV_FAVS) {               // push = ir a otros cuartos
+    } else if (hueView == HV_FAVS) {               // escena, o entrar a cuartos
+      if (hueSel < 3) { favActivate(hueSel); return; }
       hueView = HV_ROOMS; hueSel = 0; hueRoomSel = 0;
       hue_request_rooms();
       hueEnterRooms();
@@ -1094,9 +1062,11 @@ void ui_tick() {
 
   // Estado en el cover
   if (pcKnown) {
-    lv_obj_set_style_bg_color(pgDot, pcOnline ? COL_OK : COL_SUB, 0);
+    lv_obj_set_style_bg_color(pgDot, pcOnline ? COL_OK : COL_TXT, 0);
+    lv_obj_set_style_bg_opa(pgDot, pcOnline ? LV_OPA_COVER : OPA_INACTIVE, 0);
     lv_label_set_text(pgStatus, pcOnline ? "Encendida" : "Apagada");
-    lv_obj_set_style_text_color(pgIcon, pcOnline ? COL_OK : COL_SUB, 0);
+    lv_obj_set_style_text_color(pgIcon, pcOnline ? COL_OK : COL_TXT, 0);
+    lv_obj_set_style_text_opa(pgIcon, pcOnline ? LV_OPA_COVER : OPA_INACTIVE, 0);
   } else {
     lv_label_set_text(pgStatus, "Consultando...");
   }
@@ -1158,7 +1128,8 @@ void ui_tick() {
     pgInfoUntil = 0;
     if (pgView == PG_MENU) {
       lv_label_set_text(pgMenuHint, "");
-      lv_obj_set_style_text_color(pgMenuHint, COL_SUB, 0);
+      lv_obj_set_style_text_color(pgMenuHint, COL_TXT, 0);
+      lv_obj_set_style_text_opa(pgMenuHint, OPA_STATE, 0);
       pgApplyHighlight();                   // restaura el color normal de los items
     }
     else lv_label_set_text(pgHint, "push: opciones");

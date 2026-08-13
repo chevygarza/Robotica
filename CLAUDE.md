@@ -16,9 +16,8 @@ Elecrow CrowPanel ESP32-S3 1.46" round: ESP32-S3R8, 16MB flash, 8MB PSRAM,
 IPS 360x360 (panel ST77961), touch cst816t (GPIO 13/5), rotary encoder
 (45/42/41), backlight GPIO46 PWM ch0. `board.h` identico en ambos proyectos.
 
-HOY (jun-2026) hay UNA placa fisica corriendo TMEhub. Cuando llegue la
-CrowPanel #2: TMEhub queda en TME y se restaura StuntHub
-(`backup/stunthub_v2_bin/RESTORE.md` o recompilar).
+Ago-2026: ya son DOS placas. TMEhub vive en la suya (TME) y StuntHub corre en
+la segunda, ya con VinilOS integrado.
 
 ## Build (igual para ambos — ver build_env/README.md ANTES de instalar nada)
 ```bash

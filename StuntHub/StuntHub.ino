@@ -39,17 +39,16 @@ static void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t
   lv_disp_flush_ready(disp);
 }
 
+// TACTIL APAGADO A PROPOSITO (INTERFAZ.md §3). No es que no funcione: un objeto
+// que se maneja girando no debe reaccionar a que lo toques para acomodarlo — en
+// VinilOS un roce arrastraba la biblioteca entera. Y un atajo tactil que solo
+// existe en una app ensena que la pantalla a veces responde y a veces no.
+// UNICA excepcion: el toque DESPIERTA. Despierta; no actua.
 static void my_touch_read(lv_indev_drv_t *drv, lv_indev_data_t *data) {
   if (touch.available() && !(touch.x == 0 && touch.y == 0)) {
-    g_lastActivity = millis();
-    // Si está dormido (o recién despertó), el toque solo despierta, no actúa
-    if (g_asleep || millis() < g_wakeGuardUntil) { data->state = LV_INDEV_STATE_REL; return; }
-    data->state   = LV_INDEV_STATE_PR;
-    data->point.x = touch.x;
-    data->point.y = touch.y;
-  } else {
-    data->state = LV_INDEV_STATE_REL;
+    g_lastActivity = millis();          // cuenta como actividad: despierta
   }
+  data->state = LV_INDEV_STATE_REL;     // ...y nunca se reporta como presion
 }
 
 // ---- Perilla (encoder + pulsador) ----
@@ -76,7 +75,7 @@ static void encTask(void *pv) {
     // --- Botón: corto vs largo (mantener) ---
     int b = digitalRead(PIN_ENC_SW);
     if (b == LOW && lastBtn == HIGH) { pressT = millis(); longFired = false; g_lastActivity = millis(); }
-    if (b == LOW && !longFired && millis() - pressT > 600) { g_btnLong = true; longFired = true; }
+    if (b == LOW && !longFired && millis() - pressT > 900) { g_btnLong = true; longFired = true; }
     if (b == HIGH && lastBtn == LOW && !longFired && millis() - pressT > 30) g_btnShort = true;
     lastBtn = b;
 

@@ -184,8 +184,7 @@ Clima, X @stuntech y Servidor (Mac Mini). Recuperables del historial de git.
   (ver gotchas). Es codigo listo para pegar.
 
 ### Casa / infra
-- Reserva DHCP de la PC gamer (**.58**) en el Google Home. OJO: la doc vieja
-  decia .56, que es la IP que DHCP ya le habia movido.
+- ~~Reserva DHCP de la PC gamer~~ **HECHA** (ago-2026): .58 fijada en Google Home.
 
 ### Ideas en cola
 - App "Inbox del bunker" (notificaciones push del Mac Mini).
