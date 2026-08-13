@@ -16,6 +16,7 @@
 #include "app_markets.h"
 #include "app_wol.h"
 #include "player.h"
+#include "settings.h"
 
 LGFX gfx;
 cst816t touch(Wire, PIN_TOUCH_RST, PIN_TOUCH_INT);
@@ -29,7 +30,10 @@ static lv_color_t *buf1 = nullptr;
 volatile uint32_t g_lastActivity = 0;
 static bool       g_asleep = false;
 static uint32_t   g_wakeGuardUntil = 0;
-static const uint32_t SLEEP_MS = 30000;   // 30s sin actividad -> apaga
+// El reposo sale de Ajustes. UNA condicion lo dispara: no hubo actividad
+// (perilla o toque). Sin excepciones por estado: las tenia antes y volvian el
+// comportamiento impredecible. 0 = nunca.
+static uint32_t sleepMs() { return (uint32_t)ajustes().reposoMin * 60000UL; }
 
 static void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p) {
   if (gfx.getStartCount() > 0) gfx.endWrite();
@@ -96,12 +100,8 @@ static void powerUpScreen() {
   pinMode(PIN_RGB_PWR, OUTPUT);   digitalWrite(PIN_RGB_PWR, HIGH);
 }
 
-// Brillo según horario: día 70%, noche (10pm-7am) 25%. Sin hora aún -> día.
-static uint8_t briPct() {
-  struct tm t;
-  if (!getLocalTime(&t, 0)) return 70;
-  return (t.tm_hour >= 22 || t.tm_hour < 7) ? 25 : 70;
-}
+// El brillo vive en Ajustes; "Automatico" resuelve el horario por NTP.
+static uint8_t briPct() { return aj_brillo_uso(); }
 
 static void initBacklight() {
   ledcSetup(BL_PWM_CH, BL_PWM_FREQ, BL_PWM_RES);
@@ -110,9 +110,26 @@ static void initBacklight() {
 }
 
 static void screenSleep() {
-  ledcWrite(BL_PWM_CH, 0);            // apaga pantalla
+  // "En Reposo" decide si queda negro o queda el reloj. La luz de reposo es una
+  // FRACCION del brillo de uso, con piso absoluto: ver settings.cpp.
+  // OJO: mientras no exista la cara de reloj (etapa 5), "Reloj Digital/Analogo"
+  // no tiene nada que mostrar: dejar la pantalla tenue con la app de fondo se
+  // veria como que no se durmio. Hasta entonces, dormir es apagar.
+  #define RELOJ_REPOSO_LISTO 0
+  uint8_t bri = 0;
+  #if RELOJ_REPOSO_LISTO
+  bri = (ajustes().enReposo == REPOSO_APAGAR) ? 0 : aj_brillo_reposo();
+  #endif
+  ledcWrite(BL_PWM_CH, (bri * 255) / 100);
   digitalWrite(PIN_PWR_LED, HIGH);   // apaga LED de encendido (activo LOW)
-  digitalWrite(PIN_RGB_PWR, LOW);    // corta LEDs RGB
+  // El anillo se apaga SIEMPRE al dormir, tenga reloj la pantalla o no: el reloj
+  // es informacion, el anillo es decoracion del uso. Y se corta la CORRIENTE,
+  // no solo el brillo: un LED en brillo 0 sigue alimentado y sigue calentando.
+  digitalWrite(PIN_RGB_PWR, LOW);
+  // Guardar al dormirse: si te fuiste a media edicion, el reposo CONFIRMA en vez
+  // de descartar. Va en la TRANSICION, no en cada pasada del loop, o se
+  // escribiria NVS miles de veces por minuto.
+  ajustes_save();
   ui_screen_off();                   // suelta el GIF (CPU/RAM)
   g_asleep = true;
 }
@@ -163,6 +180,7 @@ void setup() {
   indev_drv.read_cb = my_touch_read;
   lv_indev_drv_register(&indev_drv);
 
+  ajustes_begin();   // antes de la UI: el brillo inicial ya sale de aqui
   ui_build();
   initBacklight();
 
@@ -195,7 +213,8 @@ void loop() {
     if (g_encDelta != 0) { int d = g_encDelta; g_encDelta = 0; ui_nav(d > 0 ? 1 : -1); }
     if (g_btnShort) { g_btnShort = false; ui_select(); }
     if (g_btnLong)  { g_btnLong  = false; ui_back();   }
-    if (now - g_lastActivity > SLEEP_MS) screenSleep();      // 30s sin actividad -> apaga
+    uint32_t lim = sleepMs();
+    if (lim && now - g_lastActivity > lim) screenSleep();
     static uint32_t briT = 0;                                // brillo día/noche
     if (now - briT > 60000) { briT = now; ledcWrite(BL_PWM_CH, (briPct() * 255) / 100); }
   }
