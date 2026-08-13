@@ -61,6 +61,7 @@ static const char *wallNames[3] = { "Dragon Ball", "Pokemon", "Zelda" };
 // fondo es negro. La caratula llena el disco, asi que la mura del panel casi no
 // se ve y el negro es lo que hace que el vinilo se lea como objeto.
 enum MusView { MV_COVER, MV_LIB, MV_PLAY };
+static bool mktInMenu = false;      // Mercados: portada vs menu
 static MusView musView = MV_COVER;
 static lv_obj_t *musScr = nullptr;            // pantalla del vinilo (lib + play)
 static lv_obj_t *musName, *musSub;            // biblioteca: album y subtitulo
@@ -169,16 +170,16 @@ static void buildHueCover() {
   lv_obj_align(mkCircle(s, 60,  0xFFE39A, LV_OPA_COVER), LV_ALIGN_CENTER, 0, -40);
   lv_obj_align(mkCircle(s, 16,  0xFFFFFF, LV_OPA_70), LV_ALIGN_CENTER, -12, -52);
 
-  lv_obj_t *wm = mkLabel(s, &lv_font_montserrat_28, COL_TXT);
+  lv_obj_t *wm = mkLabel(s, UI_FONT_TITLE, COL_TXT);
   lv_label_set_text(wm, "hue");
   lv_obj_align(wm, LV_ALIGN_CENTER, 0, 26);
 
-  hueCoverInfo = uiLabel(s, &lv_font_montserrat_14, COL_TXT, OPA_AVAIL_LABEL);
+  hueCoverInfo = uiLabel(s, UI_FONT_STATE, COL_TXT, OPA_AVAIL_LABEL);
   lv_obj_set_style_text_align(hueCoverInfo, LV_TEXT_ALIGN_CENTER, 0);
   lv_label_set_text(hueCoverInfo, "Philips Hue");
   lv_obj_align(hueCoverInfo, LV_ALIGN_CENTER, 0, 54);
 
-  lv_obj_t *h = mkLabel(s, &lv_font_montserrat_14, COL_ACCENT);
+  lv_obj_t *h = mkLabel(s, UI_FONT_STATE, COL_ACCENT);
   lv_label_set_text(h, "push: entrar");
   lv_obj_align(h, LV_ALIGN_CENTER, 0, 88);
 
@@ -189,34 +190,21 @@ static void buildHueMenuScreen() {
   lv_obj_t *s = newScreen();
   hueMenuScr = s;
 
-  hueTitle = mkLabel(s, &lv_font_montserrat_18, COL_ACCENT);
+  hueTitle = mkLabel(s, UI_FONT_TITLE, COL_ACCENT);
   lv_obj_set_style_text_align(hueTitle, LV_TEXT_ALIGN_CENTER, 0);
   lv_label_set_text(hueTitle, "Luces");
   lv_obj_align(hueTitle, LV_ALIGN_TOP_MID, 0, 28);
 
-  hueBox = lv_obj_create(s);
-  lv_obj_remove_style_all(hueBox);
-  lv_obj_set_size(hueBox, 280, 222);
-  lv_obj_align(hueBox, LV_ALIGN_CENTER, 0, 8);
-  lv_obj_set_flex_flow(hueBox, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_style_pad_row(hueBox, 3, 0);
-  lv_obj_set_scroll_dir(hueBox, LV_DIR_VER);
-  lv_obj_set_scrollbar_mode(hueBox, LV_SCROLLBAR_MODE_OFF);
+  hueBox = uiListBox(s);
 
-  // Sin hint en la curva inferior (ilegible en pantalla redonda): los gestos
-  // perilla/push/manten son convencion global del CROWN. Ver design system.
-  hueHint = uiLabel(s, &lv_font_montserrat_12, COL_TXT, OPA_AVAIL_LABEL);
+  hueHint = uiLabel(s, UI_FONT_STATE, COL_TXT, OPA_AVAIL_LABEL);
   lv_label_set_text(hueHint, "");
   lv_obj_align(hueHint, LV_ALIGN_TOP_MID, 0, 40);
 }
 
 static void hueApplyHighlight() {
-  for (int i = 0; i < hueItemCount; i++) {
-    bool sel = (i == hueSel);
-    lv_obj_set_style_bg_color(hueItems[i], COL_ACCENT, 0);
-    lv_obj_set_style_bg_opa(hueItems[i], sel ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
-    lv_obj_set_style_text_color(hueItems[i], sel ? COL_BG : COL_TXT, 0);
-  }
+  for (int i = 0; i < hueItemCount; i++)
+    uiRowFocus(hueItems[i], i == hueSel, false, false);
   if (hueSel >= 0 && hueSel < hueItemCount)
     lv_obj_scroll_to_view(hueItems[hueSel], LV_ANIM_ON);
 }
@@ -228,15 +216,7 @@ static void hueRenderMenu(const char *title, const char *const *items, int count
   hueItemCount = count;
   hueSel = (sel < 0) ? 0 : (sel >= count ? count - 1 : sel);
   for (int i = 0; i < count; i++) {
-    lv_obj_t *it = lv_label_create(hueBox);
-    lv_obj_set_width(it, lv_pct(100));
-    lv_obj_set_style_text_font(it, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_pad_ver(it, 5, 0);
-    lv_obj_set_style_pad_hor(it, 10, 0);
-    lv_obj_set_style_radius(it, 8, 0);
-    lv_label_set_long_mode(it, LV_LABEL_LONG_DOT);
-    lv_label_set_text(it, items[i]);
-    hueItems[i] = it;
+    hueItems[i] = uiRow(hueBox, items[i], "");
   }
   hueApplyHighlight();
 }
@@ -356,30 +336,43 @@ static void buildHueFavs() {
 }
 
 // ---------- App: Mercados (cripto) ----------
+// La portada MUESTRA (§4 regla 1: la portada nunca actua). Refrescar dejo de
+// ser un push escondido en la portada y es un renglon del menu.
+// Las filas usan uiRow: por eso ya no hay LEFT_MID/RIGHT_MID sueltos aqui —
+// alinear a los costados solo es valido DENTRO de una caja acotada y centrada,
+// nunca contra el borde de la pantalla, que se curva (§2).
+static lv_obj_t *mktState;
+static lv_obj_t *mktMenuScr, *mktMenuRow;
+
 static void buildMarketsScreen() {
   lv_obj_t *s = newScreen();
   ovScr[APP_MERCADOS] = s;
 
-  lv_obj_t *t = mkLabel(s, &lv_font_montserrat_18, COL_ACCENT);
-  lv_label_set_text(t, "MERCADOS");
-  lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 38);
+  uiTitle(s, "Mercados");
+  mktState = uiState(s);
 
+  lv_obj_t *box = uiListBox(s);
   for (int i = 0; i < 3; i++) {
-    lv_obj_t *row = mkCard(s, 246, 50);
-    lv_obj_align(row, LV_ALIGN_CENTER, 0, -34 + i * 58);
-    lv_obj_t *sym = mkLabel(row, &lv_font_montserrat_20, COL_TXT);
-    lv_label_set_text(sym, "--");
-    lv_obj_align(sym, LV_ALIGN_LEFT_MID, 6, 0);
-    lv_obj_t *pr = mkLabel(row, &lv_font_montserrat_16, COL_TXT);
-    lv_label_set_text(pr, "--");
-    lv_obj_align(pr, LV_ALIGN_RIGHT_MID, -6, -9);
-    lv_obj_t *ch = uiLabel(row, &lv_font_montserrat_12, COL_TXT, OPA_AVAIL_LABEL);
-    lv_label_set_text(ch, "--");
-    lv_obj_align(ch, LV_ALIGN_RIGHT_MID, -6, 10);
-    mktSym[i] = sym; mktPrice[i] = pr; mktChg[i] = ch;
+    lv_obj_t *r = uiRow(box, "--", "--");
+    mktSym[i] = uiRowLabel(r); mktPrice[i] = uiRowValue(r);
+    // El cambio de 24h va bajo el precio: es estado, y su color lo dice.
+    mktChg[i] = uiLabel(r, UI_FONT_STATE, COL_TXT, OPA_AVAIL_LABEL);
+    lv_label_set_text(mktChg[i], "");
+    lv_obj_align(mktChg[i], LV_ALIGN_RIGHT_MID, 0, 11);
+    lv_obj_align(mktPrice[i], LV_ALIGN_RIGHT_MID, 0, -6);
   }
 
   buildDots(s, APP_MERCADOS);
+}
+
+// Menu de Mercados: una lista, como todo menu (§4 regla 3).
+static void buildMarketsMenu() {
+  lv_obj_t *s = newScreen();
+  mktMenuScr = s;
+  uiTitle(s, "Mercados");
+  lv_obj_t *box = uiListBox(s);
+  mktMenuRow = uiRow(box, "Refrescar", "");
+  uiRowFocus(mktMenuRow, true, false, false);
 }
 
 // ---------- App: Fotos (GIFs) ----------
@@ -428,7 +421,7 @@ static void buildWallpaperScreen() {
 
   // (el GIF se crea al entrar a la app via wallShow)
 
-  wallName = uiLabel(s, &lv_font_montserrat_14, COL_TXT, OPA_AVAIL_LABEL);
+  wallName = uiLabel(s, UI_FONT_STATE, COL_TXT, OPA_AVAIL_LABEL);
   lv_label_set_text(wallName, wallNames[0]);
   lv_obj_align(wallName, LV_ALIGN_BOTTOM_MID, 0, -38);
 
@@ -448,10 +441,7 @@ static void pgApplyHighlight() {
     bool sel = (i == pgSel);
     bool isMode = (pgActions[i] == PA_NORMAL || pgActions[i] == PA_SIM || pgActions[i] == PA_TV);
     bool locked = isMode && !ready;          // perfil bloqueado durante el boot
-    lv_obj_set_style_bg_color(pgItems[i], COL_ACCENT, 0);
-    lv_obj_set_style_bg_opa(pgItems[i], (sel && !locked) ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
-    lv_obj_set_style_text_color(pgItems[i], sel ? COL_BG : COL_TXT, 0);
-    lv_obj_set_style_text_opa(pgItems[i], locked ? OPA_INACTIVE : LV_OPA_COVER, 0);
+    uiRowFocus(pgItems[i], sel, locked, false);
   }
 }
 
@@ -473,14 +463,7 @@ static void pgRenderMenu() {
   pgItemCount = n;
   if (pgSel >= n) pgSel = 0;
   for (int i = 0; i < n; i++) {
-    lv_obj_t *it = lv_label_create(pgMenuBox);
-    lv_obj_set_width(it, lv_pct(100));
-    lv_obj_set_style_text_font(it, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_pad_ver(it, 9, 0);
-    lv_obj_set_style_radius(it, 10, 0);
-    lv_obj_set_style_text_align(it, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_text(it, labels[i]);
-    pgItems[i] = it;
+    pgItems[i] = uiRow(pgMenuBox, labels[i], "");
   }
   pgApplyHighlight();
 }
@@ -495,32 +478,23 @@ static void buildGamerMenu() {
   lv_obj_t *s = newScreen();
   pgMenuScr = s;
 
-  pgMenuTitle = mkLabel(s, &lv_font_montserrat_18, COL_ACCENT);
+  pgMenuTitle = mkLabel(s, UI_FONT_TITLE, COL_ACCENT);
   lv_obj_set_style_text_align(pgMenuTitle, LV_TEXT_ALIGN_CENTER, 0);
-  lv_label_set_text(pgMenuTitle, "PC GAMER");
+  lv_label_set_text(pgMenuTitle, "Pc Gamer");
   lv_obj_align(pgMenuTitle, LV_ALIGN_TOP_MID, 0, 28);
 
-  pgMenuBox = lv_obj_create(s);
-  lv_obj_remove_style_all(pgMenuBox);
-  lv_obj_set_size(pgMenuBox, 280, 190);
-  lv_obj_align(pgMenuBox, LV_ALIGN_CENTER, 0, 20);
-  lv_obj_set_flex_flow(pgMenuBox, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(pgMenuBox, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_row(pgMenuBox, 8, 0);
-  lv_obj_clear_flag(pgMenuBox, LV_OBJ_FLAG_SCROLLABLE);
+  pgMenuBox = uiListBox(s);
 
   // Feedback/estado: debajo del titulo (zona visible del circulo), vacio en reposo.
-  pgMenuHint = uiLabel(s, &lv_font_montserrat_14, COL_TXT, OPA_AVAIL_LABEL);
-  lv_label_set_text(pgMenuHint, "");
-  lv_obj_align(pgMenuHint, LV_ALIGN_TOP_MID, 0, 52);
+  pgMenuHint = uiState(s);
 }
 
 static void buildGamerScreen() {
   lv_obj_t *s = newScreen();
   ovScr[APP_PC] = s;
 
-  lv_obj_t *t = mkLabel(s, &lv_font_montserrat_18, COL_ACCENT);
-  lv_label_set_text(t, "PC GAMER");
+  lv_obj_t *t = mkLabel(s, UI_FONT_TITLE, COL_ACCENT);
+  lv_label_set_text(t, "Pc Gamer");
   lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 40);
 
   lv_obj_t *ring = lv_obj_create(s);
@@ -531,7 +505,7 @@ static void buildGamerScreen() {
   lv_obj_set_style_border_color(ring, COL_ACCENT, 0);
   lv_obj_clear_flag(ring, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_align(ring, LV_ALIGN_CENTER, 0, -24);
-  pgIcon = uiLabel(ring, &lv_font_montserrat_48, COL_TXT, OPA_AVAIL_LABEL);
+  pgIcon = uiLabel(ring, UI_FONT_FIG_XL, COL_TXT, OPA_AVAIL_LABEL);
   lv_label_set_text(pgIcon, LV_SYMBOL_POWER);
   lv_obj_center(pgIcon);
 
@@ -544,11 +518,11 @@ static void buildGamerScreen() {
   lv_obj_clear_flag(pgDot, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_align(pgDot, LV_ALIGN_CENTER, -56, 56);
 
-  pgStatus = mkLabel(s, &lv_font_montserrat_16, COL_TXT);
+  pgStatus = mkLabel(s, UI_FONT_ROW, COL_TXT);
   lv_label_set_text(pgStatus, "Consultando...");
   lv_obj_align(pgStatus, LV_ALIGN_CENTER, 8, 56);
 
-  pgHint = uiLabel(s, &lv_font_montserrat_14, COL_TXT, OPA_AVAIL_LABEL);
+  pgHint = uiLabel(s, UI_FONT_STATE, COL_TXT, OPA_AVAIL_LABEL);
   lv_label_set_long_mode(pgHint, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(pgHint, 250);
   lv_obj_set_style_text_align(pgHint, LV_TEXT_ALIGN_CENTER, 0);
@@ -574,16 +548,16 @@ static void buildMusicCover() {
   lv_obj_align(mkCircle(s, 58,  0xFFB454, LV_OPA_COVER), LV_ALIGN_CENTER, 0, -34);
   lv_obj_align(mkCircle(s, 12,  0x000000, LV_OPA_COVER), LV_ALIGN_CENTER, 0, -34);
 
-  lv_obj_t *wm = mkLabel(s, &lv_font_montserrat_28, COL_TXT);
+  lv_obj_t *wm = mkLabel(s, UI_FONT_TITLE, COL_TXT);
   lv_label_set_text(wm, "VinilOS");
   lv_obj_align(wm, LV_ALIGN_CENTER, 0, 60);
 
-  lv_obj_t *info = uiLabel(s, &lv_font_montserrat_14, COL_TXT, OPA_AVAIL_LABEL);
+  lv_obj_t *info = uiLabel(s, UI_FONT_STATE, COL_TXT, OPA_AVAIL_LABEL);
   char b[40]; snprintf(b, sizeof(b), "%d discos", (int)ALBUM_COUNT);
   lv_label_set_text(info, b);
   lv_obj_align(info, LV_ALIGN_CENTER, 0, 88);
 
-  lv_obj_t *h = mkLabel(s, &lv_font_montserrat_14, COL_ACCENT);
+  lv_obj_t *h = mkLabel(s, UI_FONT_STATE, COL_ACCENT);
   lv_label_set_text(h, "push: entrar");
   lv_obj_align(h, LV_ALIGN_CENTER, 0, 116);
 
@@ -604,12 +578,12 @@ static void buildMusicScreen() {
 
   // Biblioteca: nombre arriba (el disco al 62% deja libre esa franja y respeta
   // el safe area; abajo la curva se come el texto).
-  musName = mkLabel(s, &lv_font_montserrat_20, COL_TXT);
+  musName = mkLabel(s, UI_FONT_TITLE, COL_TXT);
   lv_obj_set_style_text_align(musName, LV_TEXT_ALIGN_CENTER, 0);
   lv_label_set_text(musName, "");
   lv_obj_align(musName, LV_ALIGN_TOP_MID, 0, 42);
 
-  musSub = uiLabel(s, &lv_font_montserrat_12, COL_TXT, OPA_AVAIL_LABEL);
+  musSub = uiLabel(s, UI_FONT_STATE, COL_TXT, OPA_AVAIL_LABEL);
   lv_obj_set_style_text_align(musSub, LV_TEXT_ALIGN_CENTER, 0);
   lv_label_set_text(musSub, "");
   lv_obj_align(musSub, LV_ALIGN_TOP_MID, 0, 68);
@@ -626,21 +600,21 @@ static void buildMusicScreen() {
   lv_obj_clear_flag(musCard, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(musCard, LV_OBJ_FLAG_HIDDEN);
 
-  musTrack = mkLabel(musCard, &lv_font_montserrat_16, COL_TXT);
+  musTrack = mkLabel(musCard, UI_FONT_ROW, COL_TXT);
   lv_label_set_long_mode(musTrack, LV_LABEL_LONG_DOT);
   lv_obj_set_width(musTrack, 280);
   lv_obj_set_style_text_align(musTrack, LV_TEXT_ALIGN_CENTER, 0);
   lv_label_set_text(musTrack, "");
   lv_obj_align(musTrack, LV_ALIGN_TOP_MID, 0, 6);
 
-  musArtist = uiLabel(musCard, &lv_font_montserrat_12, COL_TXT, OPA_AVAIL_LABEL);
+  musArtist = uiLabel(musCard, UI_FONT_STATE, COL_TXT, OPA_AVAIL_LABEL);
   lv_label_set_long_mode(musArtist, LV_LABEL_LONG_DOT);
   lv_obj_set_width(musArtist, 280);
   lv_obj_set_style_text_align(musArtist, LV_TEXT_ALIGN_CENTER, 0);
   lv_label_set_text(musArtist, "");
   lv_obj_align(musArtist, LV_ALIGN_TOP_MID, 0, 32);
 
-  musVol = mkLabel(s, &lv_font_montserrat_20, COL_WARN);
+  musVol = mkLabel(s, UI_FONT_DATA, COL_ACCENT);
   lv_label_set_text(musVol, "");
   lv_obj_align(musVol, LV_ALIGN_TOP_MID, 0, 46);
   lv_obj_add_flag(musVol, LV_OBJ_FLAG_HIDDEN);
@@ -759,6 +733,7 @@ void ui_build() {
   buildHueMenuScreen();
   buildGamerMenu();
   buildMarketsScreen();
+  buildMarketsMenu();
   buildMusicCover();
   buildMusicScreen();
   buildWallpaperScreen();
@@ -770,9 +745,18 @@ void ui_build() {
 void ui_nav(int dir) {
   if (curApp == APP_PC && pgView == PG_MENU) {    // navegando el menu de PC Gamer
     if (pgItemCount <= 0) return;
-    pgSel += dir;
-    if (pgSel < 0) pgSel = 0;
-    if (pgSel >= pgItemCount) pgSel = pgItemCount - 1;
+    // Un renglon inactivo se ve (al 60) pero EL GIRO PASA DE LARGO (§5.3):
+    // no se esconde, porque la lista cambiaria de largo y perderias referencia.
+    bool ready = pcReady();
+    int n = pgSel;
+    for (int step = 0; step < pgItemCount; step++) {
+      n += dir;
+      if (n < 0) { n = 0; break; }
+      if (n >= pgItemCount) { n = pgItemCount - 1; break; }
+      bool isMode = (pgActions[n] == PA_NORMAL || pgActions[n] == PA_SIM || pgActions[n] == PA_TV);
+      if (!(isMode && !ready)) break;              // llegamos a uno usable
+    }
+    pgSel = n;
     pgConfirming = false;                          // moverse cancela la confirmacion
     lv_label_set_text(pgMenuHint, "");
     pgApplyHighlight();
@@ -825,7 +809,16 @@ void ui_nav(int dir) {
 // 👇 Push corto: entrar / activar
 void ui_select() {
   // --- App Mercados: push = refrescar ---
-  if (curApp == APP_MERCADOS) { markets_request(); return; }
+  if (curApp == APP_MERCADOS) {
+    if (!mktInMenu) {                             // portada -> entra al menu
+      mktInMenu = true;
+      lv_scr_load_anim(mktMenuScr, LV_SCR_LOAD_ANIM_OVER_LEFT, UI_MS_SCREEN, 0, false);
+    } else {                                      // menu -> la accion
+      markets_request();
+      lv_label_set_text(uiRowValue(mktMenuRow), "Pedido");
+    }
+    return;
+  }
   // --- App Musica (VinilOS): portada -> biblioteca -> reproducir/pausa ---
   if (curApp == APP_MUSICA) {
     if (musView == MV_COVER) {                    // portada -> biblioteca
@@ -959,6 +952,12 @@ void ui_select() {
 
 // 👇⏳ Push largo: atrás / subir un nivel
 void ui_back() {
+  if (curApp == APP_MERCADOS && mktInMenu) {
+    mktInMenu = false;
+    lv_label_set_text(uiRowValue(mktMenuRow), "");
+    lv_scr_load_anim(ovScr[APP_MERCADOS], LV_SCR_LOAD_ANIM_OVER_RIGHT, UI_MS_SCREEN, 0, false);
+    return;
+  }
   if (curApp == APP_PC && pgView == PG_MENU) {     // menu -> volver al cover
     pgView = PG_COVER; pgConfirming = false;
     lv_label_set_text(pgHint, "push: opciones");
@@ -1074,12 +1073,12 @@ void ui_tick() {
   // En el menu: confirmacion del perfil (item verde si llego, rojo si no)
   if (pgView == PG_MENU && pgProfileItem >= 0 && pgProfileItem < pgItemCount) {
     if (g_pcProfileResult == 2) {                       // POST respondio OK
-      lv_obj_set_style_text_color(pgItems[pgProfileItem], COL_OK, 0);
+      lv_obj_set_style_text_color(uiRowLabel(pgItems[pgProfileItem]), COL_OK, 0);
       lv_label_set_text(pgMenuHint, LV_SYMBOL_OK " Listo");
       lv_obj_set_style_text_color(pgMenuHint, COL_OK, 0);
       pgProfileItem = -1; pgInfoUntil = millis() + 1800;
     } else if (g_pcProfileResult == -1) {               // no respondio
-      lv_obj_set_style_text_color(pgItems[pgProfileItem], COL_BAD, 0);
+      lv_obj_set_style_text_color(uiRowLabel(pgItems[pgProfileItem]), COL_BAD, 0);
       lv_label_set_text(pgMenuHint, "No respondio");
       lv_obj_set_style_text_color(pgMenuHint, COL_BAD, 0);
       pgProfileItem = -1; pgInfoUntil = millis() + 2500;

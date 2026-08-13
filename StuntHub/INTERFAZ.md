@@ -400,35 +400,46 @@ la misma excepción. Cualquier app que muestre **datos** no.
 
 Distancia entre este documento y el código, en orden de riesgo.
 
+> **Estado ago-2026: todo aplicado.** El documento se volvió código en
+> `ui_theme.h` (tokens + los cinco componentes). Dos detalles que el checklist
+> no anticipaba y quedaron resueltos:
+> **mantener estaba en 600 ms**, no 900 — corregido en `StuntHub.ino`; y
+> **`LEFT_MID`/`RIGHT_MID` siguen existiendo dentro de `uiRow`**, porque alinear
+> a los costados de una caja acotada y centrada sí es válido: lo que la regla
+> prohíbe es alinear contra el borde de la pantalla, que se curva. Ya no hay
+> usos sueltos en `app_ui.cpp`.
+> Sigue pendiente el arreglo de `powerUpScreen()` (ver `CLAUDE.md`), que no es
+> de interfaz.
+
 ### Bloquea apagar el táctil
 
-- [ ] **Favoritos de Hue a lista navegable.** Hoy son táctiles y el giro está
+- [x] **Favoritos de Hue a lista navegable.** Hoy son táctiles y el giro está
       deshabilitado ahí (`app_ui.cpp:840`). Es lo único que rompe apagar el
       dedo — los modos de PC Gamer ya se recorren con la perilla.
-- [ ] Quitar los dos `lv_obj_add_event_cb` de `LV_EVENT_CLICKED`
+- [x] Quitar los dos `lv_obj_add_event_cb` de `LV_EVENT_CLICKED`
       (`app_ui.cpp:376` y `391`).
-- [ ] Desactivar el `lv_indev` táctil, dejando solo el despertar.
+- [x] Desactivar el `lv_indev` táctil, dejando solo el despertar.
 
 ### Consistencia visible
 
-- [ ] **Títulos capitalizados**: `"MERCADOS"` → `"Mercados"`, `"PC GAMER"` →
+- [x] **Títulos capitalizados**: `"MERCADOS"` → `"Mercados"`, `"PC GAMER"` →
       `"Pc Gamer"`.
-- [ ] **Tipografía de siete tamaños a cuatro más dos de cifra.** Eliminar el 12
+- [x] **Tipografía de siete tamaños a cuatro más dos de cifra.** Eliminar el 12
       (sube a 14) y el 20 (a 18 o 22 según sea dato o título).
-- [ ] **Acento a ámbar `0xFF7A10`.** Retirar `COL_ACCENT` azul.
-- [ ] **Retirar `COL_SUB`**; el texto secundario va por opacidad.
-- [ ] **Sustituir los nueve hex sueltos** por sus constantes.
+- [x] **Acento a ámbar `0xFF7A10`.** Retirar `COL_ACCENT` azul.
+- [x] **Retirar `COL_SUB`**; el texto secundario va por opacidad.
+- [x] **Sustituir los nueve hex sueltos** por sus constantes.
 
 ### Estructura
 
-- [ ] **Push desde la portada entra, no actúa.** Mercados refrescaba con push
+- [x] **Push desde la portada entra, no actúa.** Mercados refrescaba con push
       desde la portada; refrescar pasa a ser un renglón de su menú.
-- [ ] **Retirar `LEFT_MID` y `RIGHT_MID`** (tres usos).
-- [ ] **Ocultar los puntos de app** dentro de una app.
-- [ ] Alinear cada lista a la retícula: primera fila en `y = 86`, filas de 32.
+- [x] **Retirar `LEFT_MID` y `RIGHT_MID`** (tres usos).
+- [x] **Ocultar los puntos de app** dentro de una app.
+- [x] Alinear cada lista a la retícula: primera fila en `y = 86`, filas de 32.
 
 ### Fuera de este repo
 
-- [ ] **Corregir la regla 8 de `CROWN32/CLAUDE.md`.** Hoy pide fondos brillantes
+- [x] **Corregir la regla 8 de `CROWN32/CLAUDE.md`.** Hoy pide fondos brillantes
       y los dos firmwares usan oscuro. La regla debe decir lo que el código hace,
       con la razón.
