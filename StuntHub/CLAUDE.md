@@ -150,6 +150,12 @@ Clima, X @stuntech y Servidor (Mac Mini). Recuperables del historial de git.
   directo encendida + uptime>=2min (lockout de arranque). OJO: la doc vieja decia
   `g_srv.pc_online`, pero **`g_srv` ya no existe** (se fue con app_server).
 
+- **La MUSICA se atiende fuera del bloque de su app.** El avance de pista y el
+  repetir-album viven en `ui_tick` PERO sin la guarda `curApp == APP_MUSICA`:
+  metidos dentro, un album que se acaba mientras andas en Hue o PC se quedaba
+  callado, y `player_album_fin()` es consume-once, asi que al volver a la app
+  disparaba tarde y arrancaba el disco de golpe. Solo lo VISUAL (vinyl_tick, el
+  overlay de volumen) depende de estar viendo el disco.
 - **`ui_tick()` tiene un throttle de 500ms**: todo lo que va DESPUES corre a 2
   fps. La animacion del vinilo (`vinyl_tick()`) va ANTES del throttle a
   proposito — puesta despues, el disco gira a saltos visibles. Cualquier cosa

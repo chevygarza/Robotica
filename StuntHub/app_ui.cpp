@@ -997,24 +997,31 @@ void ui_tick() {
   // --- Musica (VinilOS) ---
   // vinyl_tick mueve la rotacion: solo mientras se ve el disco (es lo mas caro
   // de dibujar del firmware). Va ANTES del throttle de 500ms para que gire fluido.
+  // La MUSICA se atiende estes donde estes: si esto viviera dentro del bloque de
+  // la app, un album que se acaba mientras andas en Hue o en PC se quedaria
+  // callado. "Dormir la pantalla no detiene lo que este corriendo" (INTERFAZ §9)
+  // vale igual para cambiar de app. Los widgets existen aunque el disco no.
+  if (player_available() && musLoaded >= 0) {
+    // El DFPlayer avisa cuando cambia de pista; la UI lo refleja si se ve.
+    if (player_track_index() && player_track_index() != musTrackIx) {
+      musTrackIx = player_track_index();
+      vinyl_set_dots(ALBUMS[musLoaded].tracks, musTrackIx, ALBUMS[musLoaded].color);
+      musRefreshTrack();
+    }
+    // Fin del album: repite el mismo disco (Ajustes llega en la etapa 5).
+    if (player_album_fin()) {
+      musTrackIx = 1;
+      player_play_album(ALBUMS[musLoaded].folder, ALBUMS[musLoaded].tracks);
+      musRefreshTrack();
+    }
+  }
+  // Lo VISUAL del disco si depende de estar viendolo: rotar la caratula es lo
+  // mas caro del firmware.
   if (curApp == APP_MUSICA && musView != MV_COVER) {
     vinyl_tick();
     if (musVolUntil && millis() > musVolUntil) {
       musVolUntil = 0;
       lv_obj_add_flag(musVol, LV_OBJ_FLAG_HIDDEN);
-    }
-    // El DFPlayer avisa solo cuando cambia de pista; la UI lo refleja.
-    if (player_available() && player_track_index() && player_track_index() != musTrackIx) {
-      musTrackIx = player_track_index();
-      if (musLoaded >= 0)
-        vinyl_set_dots(ALBUMS[musLoaded].tracks, musTrackIx, ALBUMS[musLoaded].color);
-      musRefreshTrack();
-    }
-    // Fin del album: por ahora repite el mismo disco (Ajustes llega en etapa 5).
-    if (player_available() && player_album_fin() && musLoaded >= 0) {
-      musTrackIx = 1;
-      player_play_album(ALBUMS[musLoaded].folder, ALBUMS[musLoaded].tracks);
-      musRefreshTrack();
     }
   }
 
