@@ -1,6 +1,7 @@
 # Robotica — workspace de Jose
 
-Repo unico con todos los proyectos de hardware. Se trabaja desde varias Macs
+Repo unico con todos los proyectos de hardware. Vive en `~/Developer/Robotica`
+en todas las Macs (ver `docs/SETUP-MAC.md`). Se trabaja desde varias Macs
 con Claude Code, asi que la sincronizacion con GitHub es obligatoria.
 
 ## ⚠️ Regla de sincronizacion (contrato con cualquier sesion)
