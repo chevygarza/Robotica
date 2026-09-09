@@ -1,7 +1,7 @@
 // ============================================================================
 //  TAC-1 — INTERFAZ.md de StuntHub hecho codigo, para un lienzo apaisado
 // ============================================================================
-// Mismo ADN que StuntHub (~/Desktop/CROWN32/StuntHub/ui_theme.h) y VinilOS:
+// Mismo ADN que StuntHub (ESP32/Perilla-1.46/StuntHub/ui_theme.h) y VinilOS:
 // un acento, jerarquia por opacidad, Montserrat en una escala cerrada, tiempos
 // fijos. Lo que cambia es el lienzo: 480x320 rectangular y TACTIL, asi que la
 // reticula tiene filas mas altas (dedo, no perilla) y aqui si existen las

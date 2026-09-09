@@ -7,10 +7,10 @@ via pc_agent). Incluye sleep 30s, brillo nocturno, arranque escalonado.
 Con la placa conectada (ver puerto con `ls /dev/cu.usbmodem*`):
 
 ```bash
-cd ~/Desktop/crowpanel-esp32s3/firmware/StuntHub
+cd ESP32/Perilla-1.46/StuntHub
 arduino-cli upload -p /dev/cu.usbmodemXXXX \
   --fqbn "esp32:esp32:esp32s3:PSRAM=opi,FlashSize=16M,PartitionScheme=huge_app,USBMode=hwcdc,CDCOnBoot=cdc" \
-  --input-dir ~/Desktop/crowpanel-esp32s3/backup/stunthub_v2_bin
+  --input-dir ESP32/Perilla-1.46/backup/stunthub_v2_bin
 ```
 
 (Equivalente: recompilar desde firmware/StuntHub — el código está en git.)

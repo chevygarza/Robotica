@@ -1,0 +1,6 @@
+# Entorno aislado para la JC3248W535: core esp32 3.x sin tocar el 2.0.17 de la perilla.
+# Los directorios (data/downloads/user) los fija tools/build.sh con variables
+# ARDUINO_DIRECTORIES_* relativas al proyecto, para que funcione en cualquier Mac.
+board_manager:
+  additional_urls:
+    - https://espressif.github.io/arduino-esp32/package_esp32_index.json

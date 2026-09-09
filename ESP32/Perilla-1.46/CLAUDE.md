@@ -1,4 +1,4 @@
-# CROWN32 — Proyectos de perillas ESP32-S3 (CrowPanel 1.46")
+# Perilla-1.46 (antes CROWN32) — Proyectos de perillas ESP32-S3 (CrowPanel 1.46")
 
 Indice del workspace. Dos firmwares INDEPENDIENTES para el mismo hardware,
 cada uno con su CLAUDE.md completo — **lee el del proyecto que vayas a tocar**:
@@ -48,7 +48,7 @@ pantalla en blanco), lvgl 8.3.6, lv_conf.h custom de `build_env/` copiado a
 
 ## Lineamiento de interfaz — donde vive
 **La espec de UI de StuntHub es `StuntHub/INTERFAZ.md` y MANDA.** Su hermano de
-VinilOS es `~/Desktop/VNL1/docs/interfaz.md`: mismo ADN, distinto contenido.
+VinilOS es `ESP32/Perilla-1.46/VinilOS/docs/interfaz.md`: mismo ADN, distinto contenido.
 Hecho codigo en `StuntHub/ui_theme.h` (tokens + los cinco componentes); las apps
 no escriben fuentes, alturas, radios ni hex.
 

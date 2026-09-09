@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Monitor serial del TAC-1 SIN tocar DTR/RTS.
 
-Regla 7 de CROWN32: togglear DTR/RTS deja al S3 en modo DOWNLOAD (pantalla
+Regla 7 de Perilla-1.46: togglear DTR/RTS deja al S3 en modo DOWNLOAD (pantalla
 negra, revivir = desconectar el USB). Se abre el puerto con las dos lineas
 en False ANTES de open().  Uso: tools/.venv/bin/python tools/monitor.py [seg]
 """

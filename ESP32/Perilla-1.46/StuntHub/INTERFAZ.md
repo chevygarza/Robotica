@@ -1,6 +1,6 @@
 # StuntHub — Lineamiento de interfaz
 
-El "HIG" de StuntHub. Hermano del de VinilOS (`~/Desktop/VNL1/docs/interfaz.md`):
+El "HIG" de StuntHub. Hermano del de VinilOS (`ESP32/Perilla-1.46/VinilOS/docs/interfaz.md`):
 **mismo ADN**, distinto contenido. Lo que aquí se repite es a propósito — los dos
 firmwares corren en el mismo objeto y se manejan igual.
 
@@ -272,7 +272,7 @@ precio, porcentaje), no debe bailar. Ancho fijo o alineación a la derecha.
 
 **Fondo oscuro.** Decidido, y a conciencia.
 
-> La regla 8 de `CROWN32/CLAUDE.md` dice *"fondos brillantes sólidos, el panel
+> La regla 8 de `Perilla-1.46/CLAUDE.md` dice *"fondos brillantes sólidos, el panel
 > tiene mura visible en fondos oscuros"*. **Esa regla se actualiza, no se
 > ignora.** La mura existe, pero después de meses de uso no estorba, y un
 > dashboard de bunker con fondo claro es una lámpara en la cara de noche.
@@ -374,7 +374,7 @@ reproducción de medios es inmersiva.
 
 **Lo que no comparte:** fondo, retícula vertical, título, indicador de apps y el
 componente de lista. Su lineamiento propio está en
-`~/Desktop/VNL1/docs/interfaz.md`.
+`ESP32/Perilla-1.46/VinilOS/docs/interfaz.md`.
 
 Cualquier app futura que sea **contenido inmersivo** —fotos, video— puede pedir
 la misma excepción. Cualquier app que muestre **datos** no.
@@ -440,6 +440,6 @@ Distancia entre este documento y el código, en orden de riesgo.
 
 ### Fuera de este repo
 
-- [x] **Corregir la regla 8 de `CROWN32/CLAUDE.md`.** Hoy pide fondos brillantes
+- [x] **Corregir la regla 8 de `Perilla-1.46/CLAUDE.md`.** Hoy pide fondos brillantes
       y los dos firmwares usan oscuro. La regla debe decir lo que el código hace,
       con la razón.

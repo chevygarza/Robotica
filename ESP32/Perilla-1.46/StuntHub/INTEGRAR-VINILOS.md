@@ -1,7 +1,7 @@
 # Prompt: meter VinilOS dentro de StuntHub
 
 Copia todo lo que sigue como primer mensaje de una sesión nueva abierta en
-`CROWN32/StuntHub/`.
+`Perilla-1.46/StuntHub/`.
 
 ---
 
@@ -11,8 +11,8 @@ dos bocinas, doble batería y corriente directa.
 
 Los dos proyectos son míos y corren en la **misma placa**:
 
-- StuntHub: `CROWN32/StuntHub/` (lee su `CLAUDE.md` y el de `CROWN32/`)
-- VinilOS: `~/Desktop/VNL1/` (lee su `README.md` y `docs/producto.md`)
+- StuntHub: `Perilla-1.46/StuntHub/` (lee su `CLAUDE.md` y el de `Perilla-1.46/`)
+- VinilOS: `ESP32/Perilla-1.46/VinilOS/` (lee su `README.md` y `docs/producto.md`)
 
 **Antes de escribir código, lee los cuatro documentos.** Están escritos para que
 no tengas que redescubrir nada, y las dos secciones que más te van a servir son
@@ -83,7 +83,7 @@ en la misma pantalla sin crear un modo invisible.
 
 **5. Hay un choque de estética que tienes que decidir explícitamente.**
 
-La regla 8 de `CROWN32/CLAUDE.md` dice *"fondos de UI: colores brillantes
+La regla 8 de `Perilla-1.46/CLAUDE.md` dice *"fondos de UI: colores brillantes
 sólidos, el panel tiene mura visible en fondos oscuros"*. VinilOS es negro a
 propósito: fondo negro, tipografía sobria, la carátula llenando el disco.
 
@@ -126,7 +126,7 @@ el siseo en silencio y en reposo.
 
 ## Reglas del workspace que aplican
 
-Están en `CROWN32/CLAUDE.md` y son contrato:
+Están en `Perilla-1.46/CLAUDE.md` y son contrato:
 
 1. **Nunca flashees sin que yo lo confirme en ese mensaje.**
 2. Nunca refactorices por gusto — solo lo pedido.

@@ -1,7 +1,7 @@
 # Prompt: agregar la app Ajustes a StuntHub
 
 Copia todo lo que sigue como primer mensaje de una sesión abierta en
-`CROWN32/StuntHub/`.
+`Perilla-1.46/StuntHub/`.
 
 ---
 
@@ -12,10 +12,10 @@ caro ahí.
 **Lee primero, en este orden:**
 
 1. `StuntHub/INTERFAZ.md` — el lineamiento de UI. La app nueva lo obedece completo.
-2. `StuntHub/CLAUDE.md` y `CROWN32/CLAUDE.md` — reglas duras del workspace.
-3. `~/Desktop/VNL1/firmware/VNL1/settings.h` y `settings.cpp` — la implementación
+2. `StuntHub/CLAUDE.md` y `Perilla-1.46/CLAUDE.md` — reglas duras del workspace.
+3. `ESP32/Perilla-1.46/VinilOS/firmware/VNL1/settings.h` y `settings.cpp` — la implementación
    de referencia. **Cópiala y adáptala; no la reescribas desde cero.**
-4. `~/Desktop/VNL1/README.md`, sección "Ajustes" — el porqué de cada decisión.
+4. `ESP32/Perilla-1.46/VinilOS/README.md`, sección "Ajustes" — el porqué de cada decisión.
 
 ## Estado de hoy, verificado
 
@@ -127,7 +127,7 @@ el resultado después sería adivinar.
 
 `En Reposo: Reloj Digital / Reloj Analogo` necesita una cara de reloj, y StuntHub
 no tiene una desde que se podó la app de Clima. **Está escrita y probada** en
-`~/Desktop/VNL1/firmware/VNL1/app.cpp` (busca `refreshReloj`, `relojBox`,
+`ESP32/Perilla-1.46/VinilOS/firmware/VNL1/app.cpp` (busca `refreshReloj`, `relojBox`,
 `rjHora`): digital y analógica compartiendo caja, con fecha y clima.
 
 La hora usa una **Montserrat de 78 puntos generada con `lv_font_conv`**

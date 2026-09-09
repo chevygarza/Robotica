@@ -7,6 +7,11 @@
 set -e
 cd "$(dirname "$0")/.."
 CFG=tools/arduino-cli.yaml
+# Toolchain aislado dentro de tools/ (fuera de git; se descarga la primera vez):
+#   arduino-cli --config-file $CFG core install esp32:esp32@3.3.11
+export ARDUINO_DIRECTORIES_DATA="$PWD/tools/arduino-data"
+export ARDUINO_DIRECTORIES_DOWNLOADS="$PWD/tools/downloads"
+export ARDUINO_DIRECTORIES_USER="$PWD/tools/arduino-libs"
 FQBN="esp32:esp32:esp32s3:PSRAM=opi,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,USBMode=hwcdc,CDCOnBoot=cdc,FlashMode=qio,UploadSpeed=921600"
 PORT=$(ls /dev/cu.usbmodem* 2>/dev/null | head -1)
 

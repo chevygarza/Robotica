@@ -35,7 +35,7 @@ insertar una app = cambiar esa lista, NO cazar numeros por el archivo.
 | 4 | Fotos | GIFs embebidos DBZ/Pokemon/Zelda (180px + zoom 2x = full 360) | siguiente GIF |
 
 ### VinilOS (app 2) — integrado ago-2026, etapas 3 y 4
-Portado de `~/Desktop/VNL1/firmware/VNL1/` SIN tocar: `player.*`, `vinyl.*`,
+Portado de `ESP32/Perilla-1.46/VinilOS/firmware/VNL1/` SIN tocar: `player.*`, `vinyl.*`,
 `covers.*`, `albums.h`. Lo unico que se cambio: `player.cpp` incluye `board.h`
 en vez de `pins.h` (aqui los pines viven en board.h). **Si re-sincronizas desde
 VNL1, ese include se vuelve a romper.**
@@ -113,7 +113,7 @@ Clima, X @stuntech y Servidor (Mac Mini). Recuperables del historial de git.
      encendido interno antes de aceptar comandos; `gfx.init()` llega en
      microsegundos y la configuracion se aplica a medias. Una ventana de
      direcciones mal escrita **es** esa banda de rayas.
-  Arreglo verificado en VinilOS (`~/Desktop/VNL1/firmware/VNL1/display.cpp`),
+  Arreglo verificado en VinilOS (`ESP32/Perilla-1.46/VinilOS/firmware/VNL1/display.cpp`),
   aqui ademas hay que **corregir el orden**:
   ```c
   static void powerUpScreen() {

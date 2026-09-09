@@ -1,7 +1,7 @@
 # TAC-1 · TactOS — Panel tactil 3.5" de Jose (bunker)
 
 Tercer aparato de la familia (VNL-1 / StuntHub / **TAC-1**). Mismo ADN:
-`~/Desktop/CROWN32/CLAUDE.md` (reglas duras) y `StuntHub/INTERFAZ.md` mandan;
+`ESP32/Perilla-1.46/CLAUDE.md` (reglas duras) y `StuntHub/INTERFAZ.md` mandan;
 aqui el lineamiento esta hecho codigo en `firmware/TAC1/ui_theme.h`, adaptado a
 un lienzo APAISADO de 480x320 y TACTIL. Es un hub de apps sobre un wallpaper:
 se van agregando apps. Hoy: Inicio (hora, fecha, red), Clima (Open-Meteo),

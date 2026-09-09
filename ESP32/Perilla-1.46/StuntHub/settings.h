@@ -1,6 +1,6 @@
 // StuntHub — Ajustes del aparato, guardados en NVS.
 //
-// Adaptado de VNL1 (~/Desktop/VNL1/firmware/VNL1/settings.h). Mismas decisiones,
+// Adaptado de VNL1 (ESP32/Perilla-1.46/VinilOS/firmware/VNL1/settings.h). Mismas decisiones,
 // que ya se pagaron caro alla; lo que cambia es el namespace de NVS y que aqui
 // el brillo tiene un modo AUTOMATICO, porque StuntHub ya seguia el horario por
 // NTP (70% de dia, 25% de noche) y eso estaba bien pensado.
