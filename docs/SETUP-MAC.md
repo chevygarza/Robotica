@@ -6,6 +6,8 @@ con el mismo nombre, y que Claude Code siga las mismas reglas en todas.
 ## La regla (una linea)
 **Todo el codigo vive en `~/Developer/<nombre-exacto-del-repo-en-GitHub>/`. Nada mas.**
 Desktop es para capturas y temporales. Nada suelto en `~`.
+Unica excepcion: `~/Developer/Games-Apps/` es el cajon de prototipos sin git
+(solo existe en la Mac donde se crearon; si uno madura, se vuelve repo).
 
 ## Estructura objetivo
 ```
@@ -19,7 +21,8 @@ Desktop es para capturas y temporales. Nada suelto en `~`.
 ├── tme-web/
 ├── plantel/
 ├── Orbit-FamilyOS/
-└── reSpeaker_XVF3800_USB_4MIC_ARRAY/    clon de terceros (respeaker)
+├── reSpeaker_XVF3800_USB_4MIC_ARRAY/    clon de terceros (respeaker)
+└── Games-Apps/                          prototipos SIN git (PixelRetro, aventura-en-monterrey)
 ```
 Clona solo los que vayas a usar en esa Mac; la ruta y el nombre no cambian.
 
@@ -56,6 +59,8 @@ mkdir -p ~/.claude && cat > ~/.claude/CLAUDE.md <<'EOF2'
 - Un proyecto nuevo se crea en `~/Developer/`, con `git init` y repo en GitHub
   (cuenta `chevygarza`, privado por defecto) el mismo dia. Nada vive solo local.
 - Desktop es zona temporal: capturas, descargas, pruebas. Nunca codigo.
+- Excepcion: `~/Developer/Games-Apps/` es el cajon de prototipos y primeros
+  proyectos, SIN git. Cuando uno madure, sale a `~/Developer/<repo>` con GitHub.
 - Se trabaja desde varias Macs: la ruta `~/Developer/<repo>` es identica en todas.
 
 ## Sincronizacion (contrato con cualquier sesion)
