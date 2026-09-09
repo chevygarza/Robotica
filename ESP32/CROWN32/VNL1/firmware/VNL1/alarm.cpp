@@ -44,9 +44,9 @@ bool alarm_debe_sonar(const struct tm& t) {
 
 const char* alarm_texto_dias(uint8_t dias) {
   switch (dias) {
-    case DIAS_TODOS: return "todos los dias";
-    case DIAS_LAV:   return "de lunes a viernes";
-    case DIAS_FIN:   return "fin de semana";
-    default:         return "algunos dias";
+    case DIAS_TODOS: return "Todos los Dias";
+    case DIAS_LAV:   return "Lunes a Viernes";
+    case DIAS_FIN:   return "Fin de Semana";
+    default:         return "Algunos Dias";
   }
 }

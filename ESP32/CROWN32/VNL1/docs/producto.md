@@ -9,7 +9,7 @@ la caja, el audio y la energía.
 | Amplificador | interno del DFPlayer | interno del DFPlayer | **PAM8403 externo** |
 | Potencia real | ~2W | ~2W | **~2W por canal** |
 | Caja | 9×9×8 cm | **más delgada** | **más grande** |
-| Energía | por definir | cable | por definir |
+| Energía | cargador 5V 2A | cargador 5V 2A | **cargador 5V 2A o más** |
 
 Este documento describe **la Base** en detalle, porque es la que ya existe y
 está terminada. Las otras dos se definen como diferencias contra ella.
@@ -56,17 +56,46 @@ entrada al disco es un orden nuevo.
 frena y **se asienta derecho**, nunca torcido.
 
 **Anillo que refleja el arte.** Los ocho LEDs toman cada uno el color del sector
-de la carátula que tienen detrás. Respira mientras hay música.
+de la carátula que tienen detrás. Respira mientras hay música. También puede ir
+en ámbar fijo o en un arcoíris lento, o apagado.
+
+**Dice qué está sonando.** Bajo el disco, el título de la canción y el artista
+con el tiempo transcurrido. El módulo de audio no entrega metadata: los nombres
+salen de los tags de los MP3 y viajan compilados en el firmware, junto a las
+duraciones reales de cada pista.
+
+**Reloj de reposo.** Digital o analógico, con **fecha y clima del día**. El clima
+viene de un servicio abierto que no pide registro. Sin red, el renglón del clima
+desaparece y el reloj sigue dando la hora.
 
 **Alarma.** Un disco más de la biblioteca, con hora, días y qué álbum sonar. El
 reloj llega por NTP. Cualquier push la apaga.
 
-**Ajustes.** Tiempo de reposo, brillo de pantalla con y sin música, LEDs
-encendidos o apagados, brillo del anillo, y qué hacer al terminar un álbum:
-detener, repetir o encadenar al siguiente para siempre.
+**Ajustes.** Siete campos. Seis son iluminación —brillo, cuánto tarda en
+retirarse, qué queda al retirarse, qué tan tenue, color del anillo y su brillo—
+y el séptimo es qué hacer al terminar un álbum: detener, repetir o encadenar al
+siguiente para siempre.
+
+Cada campo controla una sola idea, y el brillo es el techo de todo: los niveles
+de reposo son una fracción de él, así que el aparato en reposo nunca puede
+quedar más claro que el aparato en uso.
 
 **Reposo.** A los minutos que elijas se retiran juntos pantalla, anillo y LED de
 encendido. El primer gesto solo despierta, no actúa.
+
+Una sola condición lo dispara: **no tocaste la perilla**. No importa dónde
+estuvieras — biblioteca, reproduciendo, en pausa, dentro de Ajustes. El mismo
+minuto de abandono hace siempre lo mismo.
+
+Lo que queda en la pantalla depende de si hay música: con música sigue el disco
+girando, atenuado; en silencio entra el reloj. Si elegiste "apagar", se apaga en
+los dos casos — quien lo elige quiere el cuarto a oscuras.
+
+**El anillo se apaga siempre al dormir**, tenga reloj la pantalla o no. El reloj
+es información —lo pusiste para leerlo de noche— y el anillo es decoración que
+pertenece al uso.
+
+La música **no se detiene**: duerme la pantalla, no el aparato.
 
 ## Interacción
 
@@ -164,13 +193,19 @@ implica sacar la tarjeta, y sin ranura hay que abrir la caja cada vez.
 
 ### Alimentación
 
-| Pieza | Especificación |
-|---|---|
-| Cargador USB de pared | 5V, **2A mínimo** |
+| Pieza | Especificación | Cant. |
+|---|---|---|
+| Cargador USB de pared | 5V, **2A mínimo** | 1 |
+| Cable USB-A a USB-C | El de la placa | 1 |
 
 Los 2A no son por consumo promedio —la caja anda en 300 a 400 mA— sino por los
 picos del amplificador al arrancar una canción. Con una fuente floja el aparato
 se reinicia justo al empezar a sonar.
+
+**El cargador va incluido en la caja**, no es opcional. Es la única protección
+que de verdad funciona contra el modo de falla que ya nos costó un módulo de
+audio: elimina la decisión, y nadie improvisa con un power bank si ya venía con
+su cargador. La sección de energía del README explica por qué.
 
 ### Lo que NO lleva
 
@@ -180,6 +215,25 @@ Piezas que estuvieron en el plan original y quedaron descartadas:
   hilos, que ya viene con la placa.
 - **Amplificador externo.** Eso es la Max.
 - **Batería.** La Base va por cable.
+
+## Para quien la recibe
+
+La hoja que va en la caja. Tres reglas, y las tres son sobre corriente.
+
+**1. Usa el cargador que viene en la caja.** Es un 5V 2A. Cualquier cargador de
+celular equivalente sirve.
+
+**2. Nunca la conectes a un power bank que se esté cargando.** Es el modo que los
+fabricantes llaman *pass-through* o *power share*, y ahí la salida puede subirse
+por encima de lo que el aparato aguanta. Si vas a usar power bank, que sea sin
+estar enchufado, y con cable USB-A.
+
+**3. Si huele raro o se calienta, desconéctala.** El olor llega antes que el
+humo.
+
+Y una de uso: **el primer gesto solo despierta.** Si la pantalla está dormida,
+girar o presionar no cambia de disco ni pausa nada — solo la trae de vuelta. Es a
+propósito, para que alcanzar la perilla a ciegas no tenga consecuencias.
 
 ## Rendimiento
 
@@ -234,6 +288,32 @@ opuestas y lo más lejos posible.
 **El material ya es estéreo.** Los MP3 se convierten a estéreo 44.1kHz desde el
 primer día; hoy se colapsa a mono en el amplificador interno. La Max no agrega
 información, la deja de tirar.
+
+## Qué cambia en el firmware
+
+**Casi nada, y eso es la buena noticia.** El volumen se sigue mandando con el
+mismo comando: en el DFPlayer es digital y ocurre **antes** del DAC, así que
+gobierna igual las salidas de línea que el amplificador interno. La perilla no
+cambia, la interfaz no cambia, el manifiesto no cambia, y la música ya viene en
+estéreo desde el script.
+
+Tres cosas sí piden atención, y ninguna es grande:
+
+**`PLAYER_VOL_MAX` tiene que ser otro.** La salida de línea al máximo satura la
+entrada del PAM8403 mucho antes que la del amplificador interno. Si se deja el
+tope de la Base, los últimos pasos de la perilla no suben volumen: distorsionan.
+Hay que encontrarlo de oído, con las bocinas definitivas montadas en la caja.
+
+**El siseo en silencio se vuelve audible.** El PAM8403 amplifica su propio ruido
+de fondo, y con dos bocinas se oye el doble. El módulo tiene pin `SHDN`: colgarlo
+de un GPIO libre y apagarlo cuando no hay música —y sobre todo en reposo— quita
+el siseo por completo. Encaja con la regla que ya existe: dormido es dormido.
+
+**Un interruptor de modelo en tiempo de compilación.** Un `#define MODELO_MAX` en
+`pins.h` que decida el tope de volumen y si existe el pin de `SHDN`. Un solo
+código para los tres modelos, sin ramas que se desincronicen.
+
+**La Slim no necesita nada.** Mismo audio, mismo firmware, mismo binario.
 
 ---
 

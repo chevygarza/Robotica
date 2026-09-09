@@ -1,0 +1,8 @@
+# Entorno aislado para la JC3248W535: core esp32 3.x sin tocar el 2.0.17 de VNL1.
+directories:
+  data: /Users/josegarza/Desktop/JC3248W535/tools/arduino-data
+  downloads: /Users/josegarza/Desktop/JC3248W535/tools/downloads
+  user: /Users/josegarza/Desktop/JC3248W535/tools/arduino-libs
+board_manager:
+  additional_urls:
+    - https://espressif.github.io/arduino-esp32/package_esp32_index.json

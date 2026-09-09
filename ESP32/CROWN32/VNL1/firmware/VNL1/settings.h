@@ -3,17 +3,23 @@
 // Todo lo que antes eran constantes en el codigo y resulto ser cuestion de
 // gusto: cuanto tarda la pantalla en retirarse, que tan tenue se queda, y si
 // los LEDs estorban. Se llega girando, como a cualquier disco.
+//
+// Una idea por campo. Antes el anillo eran dos (encendido + color) y el reloj
+// otros dos (si/no + tipo); cada par describia una sola cosa, y separados
+// permitian estados que no significan nada: "LEDs No, color Caratula".
 #pragma once
 #include <Arduino.h>
 
-// Como se ilumina el anillo.
-#define LUZ_AMBAR   0    // un solo tono calido, fijo
-#define LUZ_COVER   1    // los ocho colores de la caratula
-#define LUZ_RGB     2    // arcoiris en transicion lenta
+// El anillo. Apagado es un modo mas, no un interruptor aparte.
+#define LED_OFF     0
+#define LED_AMBAR   1    // un solo tono calido, fijo
+#define LED_COVER   2    // los ocho colores de la caratula
+#define LED_RGB     3    // arcoiris en transicion lenta
 
-// Caratula del reloj en reposo.
-#define RELOJ_DIGITAL 0
-#define RELOJ_ANALOGO 1
+// Que queda en la pantalla cuando el aparato se retira.
+#define REPOSO_APAGAR   0
+#define REPOSO_DIGITAL  1
+#define REPOSO_ANALOGO  2
 
 // Que hacer cuando se acaba el album.
 #define FIN_DETENER   0
@@ -21,21 +27,24 @@
 #define FIN_INFINITO  2
 
 struct Ajustes {
-  uint8_t luzModo;      // LUZ_*
-  bool    reloj;        // en reposo, muestra la hora en vez de apagarse
-  uint8_t relojTipo;    // RELOJ_*
-  uint8_t alFin;        // FIN_*
-  uint8_t reposoMin;    // minutos sin tocar antes de bajar la luz. 0 = nunca
-  uint8_t luzReposo;    // % de pantalla en reposo SIN musica
-  uint8_t luzMusica;    // % de pantalla en reposo CON musica
-  uint8_t brillo;       // % maximo de pantalla
-  bool    leds;         // anillo encendido o no
+  uint8_t brillo;       // % de pantalla en uso. Techo real de todo lo demas.
+  uint8_t reposoMin;    // minutos sin tocar antes de retirarse. 0 = nunca
+  uint8_t enReposo;     // REPOSO_*
+  uint8_t luzReposo;    // % DEL brillo, ya retirada. Relativo, no absoluto:
+                        // asi el reposo nunca puede quedar mas claro que el uso.
+  uint8_t ledsModo;     // LED_*
   uint8_t brilloLeds;   // % del anillo
+  uint8_t alFin;        // FIN_*
 };
 
 void      ajustes_begin();
 void      ajustes_save();
 Ajustes&  ajustes();
+
+// Un campo que no puede hacer nada no se puede elegir: Luz Reposo con la
+// pantalla en Apagar, o Brillo LEDs con el anillo en Apagados. Se dibuja
+// tenue para que se vea que existe, pero el giro pasa de largo.
+bool aj_campo_activo(uint8_t campo);
 
 // Valores que puede tomar cada campo, para que el giro recorra opciones
 // sensatas en vez de numeros de uno en uno.
@@ -43,5 +52,5 @@ uint8_t aj_ciclo_reposo(uint8_t actual, int8_t dir);
 uint8_t aj_ciclo_pct(uint8_t actual, int8_t dir, uint8_t minimo);
 void    aj_texto_reposo(char* out, size_t n, uint8_t min);
 const char* aj_texto_fin(uint8_t modo);
-const char* aj_texto_luz(uint8_t modo);
-const char* aj_texto_reloj(uint8_t tipo);
+const char* aj_texto_leds(uint8_t modo);
+const char* aj_texto_en_reposo(uint8_t modo);

@@ -35,9 +35,9 @@ void clock_hhmm(char* out, size_t n) {
 }
 
 const char* clock_status() {
-  if (sincronizado)  return "en hora";
-  if (clock_wifi())  return "buscando hora";
-  return "sin red";
+  if (sincronizado)  return "En Hora";
+  if (clock_wifi())  return "Buscando Hora";
+  return "Sin Red";
 }
 
 void clock_tick() {

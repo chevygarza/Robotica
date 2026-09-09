@@ -373,10 +373,10 @@ static void drawLabel(uint8_t idx) {
 }
 
 void vinyl_set_custom(const char* name, const char* sub, uint32_t color,
-                      bool animate) {
-  coverAct = nullptr;
+                      bool animate, const uint16_t* cover) {
+  coverAct = cover;
   drawDisc();
-  drawLabelRaw(name, sub, color, nullptr);
+  drawLabelRaw(name, sub, color, cover);
   lv_obj_invalidate(label);
   if (animate) fadeInLabel();
 }

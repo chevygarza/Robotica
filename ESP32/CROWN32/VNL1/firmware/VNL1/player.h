@@ -44,6 +44,7 @@ uint8_t player_volume();
 // Posicion dentro del album barajado, para la UI.
 uint8_t player_track_index();             // 1-based sobre el orden barajado
 uint8_t player_track_count();
+uint8_t player_track_file();              // 1-based sobre los archivos reales
 
 // Segundos desde que arranco la pista actual. El DFPlayer no reporta posicion,
 // asi que la barra de progreso se estima con reloj propio contra la duracion

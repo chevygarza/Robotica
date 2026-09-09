@@ -1,0 +1,10 @@
+# macOS
+.DS_Store
+
+# Secretos (Wi-Fi, tokens): cada proyecto tiene su secrets.h local
+secrets.h
+
+# Python
+__pycache__/
+*.pyc
+.venv/

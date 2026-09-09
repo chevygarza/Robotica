@@ -98,22 +98,37 @@ static void blApply(uint8_t pct) {
 }
 
 bool display_begin() {
-  // 1) Corriente del panel. Sin estos dos pines en HIGH la pantalla queda
-  //    negra aunque el SPI funcione. No aparece en el wiki, solo en el codigo
-  //    de fabrica de Elecrow.
+  // 1) Arranque EN FRIO del panel. Este pin es la llave de su corriente, y
+  //    antes solo se ponia en HIGH, nunca en LOW. En un reinicio por software
+  //    —watchdog, brownout, subir firmware— el pin ya venia en HIGH, asi que
+  //    el controlador conservaba el estado de la sesion anterior. Si ese
+  //    estado estaba corrupto, seguia corrupto para siempre: el bus del panel
+  //    es de escritura, no hay forma de preguntarle como esta.
+  //
+  //    Cortarle la corriente aqui es hacer en software lo mismo que
+  //    desconectar el USB, que era la unica manera conocida de revivirlo.
+  pinMode(PIN_LCD_RST, OUTPUT);
+  digitalWrite(PIN_LCD_RST, LOW);      // en reset mientras no tiene VDD
   pinMode(PIN_LCD_PWR, OUTPUT);
+  digitalWrite(PIN_LCD_PWR, LOW);
+  delay(80);                           // que se descarguen sus condensadores
+
   digitalWrite(PIN_LCD_PWR, HIGH);
   pinMode(PIN_PERIPH_5V_EN, OUTPUT);
   digitalWrite(PIN_PERIPH_5V_EN, HIGH);
+  delay(20);                           // VDD estable antes de soltar el reset
 
-  // 2) Pulso de reset a mano antes de init: el VDD sube en alto al arrancar y
-  //    el panel necesita el ciclo para quedar en un estado conocido.
-  pinMode(PIN_LCD_RST, OUTPUT);
-  digitalWrite(PIN_LCD_RST, HIGH);
-  delay(10);
+  // 2) Reset y ESPERA. Esto es lo que faltaba: los ST77xx necesitan ~120ms
+  //    tras soltar RST para terminar su encendido interno antes de aceptar
+  //    comandos. Antes se llamaba a gfx.init() microsegundos despues, y los
+  //    comandos de configuracion se aplicaban a medias o se perdian. Una
+  //    ventana de direcciones mal escrita es exactamente la banda de rayas
+  //    horizontales: los pixeles llegan bien y aterrizan en el renglon
+  //    equivocado.
   digitalWrite(PIN_LCD_RST, LOW);
-  delay(10);
+  delay(20);
   digitalWrite(PIN_LCD_RST, HIGH);
+  delay(150);
 
   ledcSetup(BL_CHANNEL, BL_FREQ, BL_BITS);
   ledcAttachPin(PIN_LCD_BL, BL_CHANNEL);

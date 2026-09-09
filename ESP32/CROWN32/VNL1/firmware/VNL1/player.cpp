@@ -220,6 +220,11 @@ uint8_t player_volume()      { return volume; }
 uint8_t player_track_index() { return orderCount ? orderPos + 1 : 0; }
 uint8_t player_track_count() { return orderCount; }
 
+// Cual ARCHIVO suena, no en que posicion de la baraja vas. Los nombres del
+// manifiesto estan indexados por archivo (001.mp3 es el 1), y con el album
+// barajado esos dos numeros no coinciden nunca.
+uint8_t player_track_file() { return orderCount ? order[orderPos] : 0; }
+
 uint32_t player_elapsed_s() {
   if (!orderCount) return 0;
   uint32_t ref = playing ? millis() : (pausedAt ? pausedAt : millis());

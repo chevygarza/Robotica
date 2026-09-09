@@ -1,0 +1,13 @@
+Caratulas de los discos especiales.
+
+Pon aqui dos imagenes y el script las procesa igual que las de los albumes:
+
+    alarma.png     el disco de la Alarma
+    ajustes.png    el disco de Ajustes
+
+Cualquier formato (jpg, png, webp). Se recortan al centro en cuadrado, se
+ajustan a 336 pixeles y se les aplica mascara circular: LAS ESQUINAS SE
+PIERDEN. De cada una sale tambien la paleta de los ocho LEDs.
+
+Si no estan, los discos se dibujan como hasta ahora: color plano con el
+nombre encima.

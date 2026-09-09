@@ -1,0 +1,8 @@
+firmware/TAC1/secrets.h
+build/
+tools/arduino-data/
+tools/downloads/
+tools/arduino-libs/libraries/lvgl/
+tools/.venv/
+backup/*.bin
+.DS_Store

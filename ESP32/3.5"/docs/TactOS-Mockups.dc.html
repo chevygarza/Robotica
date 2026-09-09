@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/modernist-44dbf4eb-ca96-4cfe-b723-03fd7e5a3c47/styles.css">
+<script src="_ds/modernist-44dbf4eb-ca96-4cfe-b723-03fd7e5a3c47/_ds_bundle.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; background: #07090F; }
+  a { color: #FF7A10; text-decoration: none; }
+  a:hover { color: #FFB454; }
+</style>
+</helmet>
+
+<div style="background:#07090F;color:#fff;font-family:Archivo,sans-serif;padding:48px 40px 72px;min-height:100vh;box-sizing:border-box">
+
+  <div style="max-width:1040px;margin:0 auto">
+
+    <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:16px;padding-bottom:16px">
+      <div style="font-family:Archivo,sans-serif;font-size:40px;font-weight:700;letter-spacing:-0.01em;line-height:1">TactOS <span style="color:#FF7A10">TAC-1</span></div>
+      <div style="font-size:13px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,.55)">Mockups 480 &times; 320 px</div>
+    </div>
+    <div style="height:2px;background:rgba(255,255,255,.85)"></div>
+    <div style="display:flex;flex-wrap:wrap;gap:32px;padding:14px 0 0;font-size:13px;line-height:1.5;color:rgba(255,255,255,.59)">
+      <div>IPS 3.5&quot; &middot; RGB565</div>
+      <div>Montserrat &middot; escala cerrada</div>
+      <div>Margen 24 &middot; contenido 432</div>
+      <div>T&aacute;ctil de un punto &middot; objetivo 44 px</div>
+    </div>
+
+    <div style="display:flex;flex-wrap:wrap;gap:56px 40px;padding-top:48px">
+
+      <div style="width:520px">
+        <div style="height:2px;background:rgba(255,255,255,.85);margin-bottom:10px"></div>
+        <div style="display:flex;gap:12px;align-items:baseline;padding-bottom:4px">
+          <span style="font-size:13px;font-weight:600;color:#FF7A10;letter-spacing:0.06em">01</span>
+          <span style="font-size:19px;font-weight:600;letter-spacing:-0.01em">Inicio</span>
+        </div>
+        <div style="font-size:13px;line-height:1.5;color:rgba(255,255,255,.59);padding-bottom:16px;max-width:440px">La &uacute;nica pantalla con wallpaper. Hora de 96 px, fecha de 18, p&iacute;ldora de red arriba a la derecha y los puntos del carrusel.</div>
+        <div style="background:#000;padding:20px;width:520px;box-sizing:border-box">
+          <div style="width:480px;height:320px;position:relative;overflow:hidden;font-family:Montserrat,sans-serif;color:#fff;background:radial-gradient(circle at 6% 112%, rgba(255,122,16,.60) 0%, rgba(255,122,16,.16) 34%, rgba(255,122,16,.03) 56%, transparent 70%), #000">
+            <div style="position:absolute;inset:0;background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E&quot;);opacity:.05;mix-blend-mode:overlay"></div>
+            <div style="position:absolute;left:24px;top:122px;font-size:96px;line-height:96px;font-weight:500;letter-spacing:-0.04em;font-variant-numeric:tabular-nums">22:41</div>
+            <div style="position:absolute;left:24px;top:228px;font-size:18px;line-height:22px;font-weight:400;opacity:.69">Sabado 5 de Septiembre</div>
+            <div style="position:absolute;right:24px;top:22px;height:36px;border-radius:18px;background:rgba(255,255,255,.08);display:flex;align-items:center;gap:8px;padding:0 14px">
+              <span style="width:8px;height:8px;border-radius:4px;background:#3DD68C;display:block"></span>
+              <span style="font-size:14px;font-weight:500;opacity:.69">Bunker 5G</span>
+            </div>
+            <div style="position:absolute;left:0;width:480px;top:303px;display:flex;justify-content:center;gap:10px">
+              <span style="width:6px;height:6px;border-radius:3px;background:#FF7A10;display:block"></span>
+              <span style="width:6px;height:6px;border-radius:3px;background:rgba(255,255,255,.24);display:block"></span>
+              <span style="width:6px;height:6px;border-radius:3px;background:rgba(255,255,255,.24);display:block"></span>
+              <span style="width:6px;height:6px;border-radius:3px;background:rgba(255,255,255,.24);display:block"></span>
+            </div>
+            <sc-if value="{{ reposo }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;inset:0;background:#000;opacity:.74"></div>
+            </sc-if>
+            <sc-if value="{{ nightMode }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;inset:0;background:#000;opacity:.45"></div>
+            </sc-if>
+          </div>
+        </div>
+      </div>
+
+      <div style="width:520px">
+        <div style="height:2px;background:rgba(255,255,255,.85);margin-bottom:10px"></div>
+        <div style="display:flex;gap:12px;align-items:baseline;padding-bottom:4px">
+          <span style="font-size:13px;font-weight:600;color:#FF7A10;letter-spacing:0.06em">02</span>
+          <span style="font-size:19px;font-weight:600;letter-spacing:-0.01em">Clima</span>
+        </div>
+        <div style="font-size:13px;line-height:1.5;color:rgba(255,255,255,.59);padding-bottom:16px;max-width:440px">Cifra protagonista de 48 px, una sola por pantalla. Cinco columnas con las pr&oacute;ximas horas; el porcentaje de lluvia pasa a color atenci&oacute;n desde 50.</div>
+        <div style="background:#000;padding:20px;width:520px;box-sizing:border-box">
+          <div style="width:480px;height:320px;position:relative;overflow:hidden;font-family:Montserrat,sans-serif;color:#fff;background:#0B1020">
+            <div style="position:absolute;left:24px;width:432px;top:11px;font-size:22px;line-height:22px;font-weight:500;text-align:center">Clima</div>
+            <div style="position:absolute;left:24px;width:432px;top:45px;font-size:14px;line-height:14px;font-weight:400;text-align:center;opacity:.55">Bunker &middot; Actualizado 22:38</div>
+            <div style="position:absolute;left:24px;width:432px;top:80px;display:flex;align-items:baseline;gap:16px">
+              <span style="font-size:48px;line-height:48px;font-weight:500;letter-spacing:-0.02em">21&deg;</span>
+              <span style="font-size:16px;line-height:16px;font-weight:400;opacity:.69">Parcialmente Nublado</span>
+            </div>
+            <div style="position:absolute;left:24px;width:432px;top:142px;display:flex;flex-direction:column;gap:6px;font-size:14px;line-height:16px;font-weight:400;opacity:.59">
+              <div>Sensacion 19&deg; &middot; Humedad 64%</div>
+              <div>Viento 12 km/h &middot; Max 27&deg; / Min 16&deg;</div>
+            </div>
+            <div style="position:absolute;left:24px;width:432px;top:206px;display:grid;grid-template-columns:repeat(5,1fr);gap:0">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+                <span style="font-size:14px;line-height:14px;opacity:.55">23h</span>
+                <span style="font-size:18px;line-height:18px;font-weight:500">20&deg;</span>
+                <span style="font-size:14px;line-height:14px;opacity:.59">10%</span>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+                <span style="font-size:14px;line-height:14px;opacity:.55">00h</span>
+                <span style="font-size:18px;line-height:18px;font-weight:500">19&deg;</span>
+                <span style="font-size:14px;line-height:14px;opacity:.59">20%</span>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+                <span style="font-size:14px;line-height:14px;opacity:.55">01h</span>
+                <span style="font-size:18px;line-height:18px;font-weight:500">18&deg;</span>
+                <span style="font-size:14px;line-height:14px;color:#FFB454">60%</span>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+                <span style="font-size:14px;line-height:14px;opacity:.55">02h</span>
+                <span style="font-size:18px;line-height:18px;font-weight:500">17&deg;</span>
+                <span style="font-size:14px;line-height:14px;color:#FFB454">75%</span>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+                <span style="font-size:14px;line-height:14px;opacity:.55">03h</span>
+                <span style="font-size:18px;line-height:18px;font-weight:500">17&deg;</span>
+                <span style="font-size:14px;line-height:14px;opacity:.59">35%</span>
+              </div>
+            </div>
+            <div style="position:absolute;left:0;width:480px;top:303px;display:flex;justify-content:center;gap:10px">
+              <span style="width:6px;height:6px;border-radius:3px;background:rgba(255,255,255,.24);display:block"></span>
+              <span style="width:6px;height:6px;border-radius:3px;background:#FF7A10;display:block"></span>
+              <span style="width:6px;height:6px;border-radius:3px;background:rgba(255,255,255,.24);display:block"></span>
+              <span style="width:6px;height:6px;border-radius:3px;background:rgba(255,255,255,.24);display:block"></span>
+            </div>
+            <sc-if value="{{ nightMode }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;inset:0;background:#000;opacity:.45"></div>
+            </sc-if>
+          </div>
+        </div>
+      </div>
+
+      <div style="width:520px">
+        <div style="height:2px;background:rgba(255,255,255,.85);margin-bottom:10px"></div>
+        <div style="display:flex;gap:12px;align-items:baseline;padding-bottom:4px">
+          <span style="font-size:13px;font-weight:600;color:#FF7A10;letter-spacing:0.06em">03</span>
+          <span style="font-size:19px;font-weight:600;letter-spacing:-0.01em">Mercados</span>
+        </div>
+        <div style="font-size:13px;line-height:1.5;color:rgba(255,255,255,.59);padding-bottom:16px;max-width:440px">Tres tarjetas sobre superficie, radio 14. S&iacute;mbolo 22, precio 28, cambio de 24 h en color bien o mal.</div>
+        <div style="background:#000;padding:20px;width:520px;box-sizing:border-box">
+          <div style="width:480px;height:320px;position:relative;overflow:hidden;font-family:Montserrat,sans-serif;color:#fff;background:#0B1020">
+            <div style="position:absolute;left:24px;width:432px;top:11px;font-size:22px;line-height:22px;font-weight:500;text-align:center">Mercados</div>
+            <div style="position:absolute;left:24px;width:432px;top:45px;font-size:14px;line-height:14px;font-weight:400;text-align:center;opacity:.55">USD &middot; 22:41</div>
+            <div style="position:absolute;left:24px;width:432px;top:80px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+              <div style="background:#161C2E;border-radius:14px;padding:16px 14px;height:132px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between">
+                <span style="font-size:22px;line-height:22px;font-weight:500">BTC</span>
+                <span style="font-size:28px;line-height:28px;font-weight:500;letter-spacing:-0.02em">104238</span>
+                <span style="font-size:14px;line-height:14px;color:#3DD68C">+2.4%</span>
+              </div>
+              <div style="background:#161C2E;border-radius:14px;padding:16px 14px;height:132px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between">
+                <span style="font-size:22px;line-height:22px;font-weight:500">ETH</span>
+                <span style="font-size:28px;line-height:28px;font-weight:500;letter-spacing:-0.02em">3842</span>
+                <span style="font-size:14px;line-height:14px;color:#FF5B6E">-1.1%</span>
+              </div>
+              <div style="background:#161C2E;border-radius:14px;padding:16px 14px;height:132px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between">
+                <span style="font-size:22px;line-height:22px;font-weight:500">SOL</span>
+                <span style="font-size:28px;line-height:28px;font-weight:500;letter-spacing:-0.02em">214.6</span>
+                <span style="font-size:14px;line-height:14px;color:#3DD68C">+5.8%</span>
+              </div>
+            </div>
+            <div style="position:absolute;left:24px;width:432px;top:236px;font-size:14px;line-height:16px;opacity:.59">Capitalizacion total 3.82 T &middot; Dominancia BTC 54%</div>
+            <div style="position:absolute;left:0;width:480px;top:303px;display:flex;justify-content:center;gap:10px">
+              <span style="width:6px;height:6px;border-radius:3px;background:rgba(255,255,255,.24);display:block"></span>
+              <span style="width:6px;height:6px;border-radius:3px;background:rgba(255,255,255,.24);display:block"></span>
+              <span style="width:6px;height:6px;border-radius:3px;background:#FF7A10;display:block"></span>
+              <span style="width:6px;height:6px;border-radius:3px;background:rgba(255,255,255,.24);display:block"></span>
+            </div>
+            <sc-if value="{{ nightMode }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;inset:0;background:#000;opacity:.45"></div>
+            </sc-if>
+          </div>
+        </div>
+      </div>
+
+      <div style="width:520px">
+        <div style="height:2px;background:rgba(255,255,255,.85);margin-bottom:10px"></div>
+        <div style="display:flex;gap:12px;align-items:baseline;padding-bottom:4px">
+          <span style="font-size:13px;font-weight:600;color:#FF7A10;letter-spacing:0.06em">04</span>
+          <span style="font-size:19px;font-weight:600;letter-spacing:-0.01em">Ajustes</span>
+        </div>
+        <div style="font-size:13px;line-height:1.5;color:rgba(255,255,255,.59);padding-bottom:16px;max-width:440px">Baja como una hoja desde arriba. Cinco filas de 44 px agrupadas sobre superficie; Volumen se ve al 24% y no act&uacute;a.</div>
+        <div style="background:#000;padding:20px;width:520px;box-sizing:border-box">
+          <div style="width:480px;height:320px;position:relative;overflow:hidden;font-family:Montserrat,sans-serif;color:#fff;background:#0B1020">
+            <div style="position:absolute;left:24px;width:432px;top:11px;font-size:22px;line-height:22px;font-weight:500;text-align:center">Ajustes</div>
+            <div style="position:absolute;left:24px;width:432px;top:45px;font-size:14px;line-height:14px;font-weight:400;text-align:center;opacity:.55">TAC-1 &middot; TactOS 0.4.2</div>
+            <div style="position:absolute;left:24px;width:432px;top:80px;background:#161C2E;border-radius:14px;overflow:hidden">
+              <div style="height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;box-sizing:border-box">
+                <span style="font-size:16px;font-weight:400">Wi-Fi</span>
+                <span style="display:flex;align-items:center;gap:10px">
+                  <span style="font-size:16px;opacity:.69">Bunker 5G</span>
+                  <span style="width:7px;height:7px;border-right:2px solid rgba(255,255,255,.24);border-top:2px solid rgba(255,255,255,.24);transform:rotate(45deg);display:block"></span>
+                </span>
+              </div>
+              <div style="height:1px;background:rgba(255,255,255,.06);margin-left:16px"></div>
+              <div style="height:44px;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:0 16px;box-sizing:border-box">
+                <span style="font-size:16px;font-weight:400">Brillo</span>
+                <span style="display:flex;align-items:center;gap:14px;flex:1;justify-content:flex-end">
+                  <span style="position:relative;width:196px;height:22px;display:flex;align-items:center">
+                    <span style="position:absolute;left:0;right:0;height:4px;border-radius:2px;background:rgba(255,255,255,.08);display:block"></span>
+                    <span style="position:absolute;left:0;width:70%;height:4px;border-radius:2px;background:#FF7A10;display:block"></span>
+                    <span style="position:absolute;left:70%;margin-left:-11px;width:22px;height:22px;border-radius:11px;background:#fff;display:block"></span>
+                  </span>
+                  <span style="font-size:14px;color:#FF7A10">Auto</span>
+                </span>
+              </div>
+              <div style="height:1px;background:rgba(255,255,255,.06);margin-left:16px"></div>
+              <div style="height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;box-sizing:border-box;opacity:.24">
+                <span style="font-size:16px;font-weight:400">Volumen</span>
+                <span style="font-size:16px">Sin Audio</span>
+              </div>
+              <div style="height:1px;background:rgba(255,255,255,.06);margin-left:16px"></div>
+              <div style="height:44px;display:flex;align-items:center;padding:0 16px;box-sizing:border-box">
+                <span style="font-size:16px;font-weight:400">Apagar</span>
+              </div>
+              <div style="height:1px;background:rgba(255,255,255,.06);margin-left:16px"></div>
+              <div style="height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;box-sizing:border-box">
+                <span style="font-size:16px;font-weight:400;color:#FF7A10">Reiniciar</span>
+                <span style="font-size:14px;color:#FF7A10">Tocar para reiniciar</span>
+              </div>
+            </div>
+            <sc-if value="{{ nightMode }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;inset:0;background:#000;opacity:.45"></div>
+            </sc-if>
+          </div>
+        </div>
+      </div>
+
+      <div style="width:520px">
+        <div style="height:2px;background:rgba(255,255,255,.85);margin-bottom:10px"></div>
+        <div style="display:flex;gap:12px;align-items:baseline;padding-bottom:4px">
+          <span style="font-size:13px;font-weight:600;color:#FF7A10;letter-spacing:0.06em">05</span>
+          <span style="font-size:19px;font-weight:600;letter-spacing:-0.01em">Red Wi-Fi</span>
+        </div>
+        <div style="font-size:13px;line-height:1.5;color:rgba(255,255,255,.59);padding-bottom:16px;max-width:440px">Un nivel m&aacute;s profundo: flecha arriba a la izquierda. Filas de 44 px, se&ntilde;al por opacidad, la red actual en verde.</div>
+        <div style="background:#000;padding:20px;width:520px;box-sizing:border-box">
+          <div style="width:480px;height:320px;position:relative;overflow:hidden;font-family:Montserrat,sans-serif;color:#fff;background:#0B1020">
+            <div style="position:absolute;left:24px;top:16px;width:22px;height:22px;display:flex;align-items:center">
+              <span style="width:9px;height:9px;border-left:2px solid rgba(255,255,255,.69);border-top:2px solid rgba(255,255,255,.69);transform:rotate(-45deg);display:block;margin-left:2px"></span>
+            </div>
+            <div style="position:absolute;left:24px;width:432px;top:11px;font-size:22px;line-height:22px;font-weight:500;text-align:center">Red Wi-Fi</div>
+            <div style="position:absolute;left:24px;width:432px;top:45px;font-size:14px;line-height:14px;font-weight:400;text-align:center;opacity:.55">Conectado a Bunker 5G</div>
+            <div style="position:absolute;left:24px;width:432px;top:80px">
+              <div style="height:44px;display:flex;align-items:center;justify-content:space-between">
+                <span style="font-size:16px;color:#3DD68C">Bunker 5G</span>
+                <span style="display:flex;align-items:flex-end;gap:2px;height:14px">
+                  <span style="width:3px;height:5px;background:#3DD68C;display:block"></span>
+                  <span style="width:3px;height:8px;background:#3DD68C;display:block"></span>
+                  <span style="width:3px;height:11px;background:#3DD68C;display:block"></span>
+                  <span style="width:3px;height:14px;background:#3DD68C;display:block"></span>
+                </span>
+              </div>
+              <div style="height:1px;background:rgba(255,255,255,.06)"></div>
+              <div style="height:44px;display:flex;align-items:center;justify-content:space-between;opacity:.69">
+                <span style="font-size:16px">Bunker 2G</span>
+                <span style="display:flex;align-items:flex-end;gap:2px;height:14px">
+                  <span style="width:3px;height:5px;background:#fff;display:block"></span>
+                  <span style="width:3px;height:8px;background:#fff;display:block"></span>
+                  <span style="width:3px;height:11px;background:#fff;display:block"></span>
+                  <span style="width:3px;height:14px;background:rgba(255,255,255,.24);display:block"></span>
+                </span>
+              </div>
+              <div style="height:1px;background:rgba(255,255,255,.06)"></div>
+              <div style="height:44px;display:flex;align-items:center;justify-content:space-between;opacity:.59">
+                <span style="font-size:16px">Taller</span>
+                <span style="display:flex;align-items:flex-end;gap:2px;height:14px">
+                  <span style="width:3px;height:5px;background:#fff;display:block"></span>
+                  <span style="width:3px;height:8px;background:#fff;display:block"></span>
+                  <span style="width:3px;height:11px;background:rgba(255,255,255,.24);display:block"></span>
+                  <span style="width:3px;height:14px;background:rgba(255,255,255,.24);display:block"></span>
+                </span>
+              </div>
+              <div style="height:1px;background:rgba(255,255,255,.06)"></div>
+              <div style="height:44px;display:flex;align-items:center;justify-content:space-between;opacity:.55">
+                <span style="font-size:16px">Vecino 24</span>
+                <span style="display:flex;align-items:flex-end;gap:2px;height:14px">
+                  <span style="width:3px;height:5px;background:#fff;display:block"></span>
+                  <span style="width:3px;height:8px;background:#fff;display:block"></span>
+                  <span style="width:3px;height:11px;background:rgba(255,255,255,.24);display:block"></span>
+                  <span style="width:3px;height:14px;background:rgba(255,255,255,.24);display:block"></span>
+                </span>
+              </div>
+              <div style="height:1px;background:rgba(255,255,255,.06)"></div>
+              <div style="height:44px;display:flex;align-items:center;justify-content:space-between;opacity:.24">
+                <span style="font-size:16px">TP-Link-9F2A</span>
+                <span style="display:flex;align-items:flex-end;gap:2px;height:14px">
+                  <span style="width:3px;height:5px;background:#fff;display:block"></span>
+                  <span style="width:3px;height:8px;background:rgba(255,255,255,.5);display:block"></span>
+                  <span style="width:3px;height:11px;background:rgba(255,255,255,.24);display:block"></span>
+                  <span style="width:3px;height:14px;background:rgba(255,255,255,.24);display:block"></span>
+                </span>
+              </div>
+            </div>
+            <sc-if value="{{ nightMode }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;inset:0;background:#000;opacity:.45"></div>
+            </sc-if>
+          </div>
+        </div>
+      </div>
+
+      <div style="width:520px">
+        <div style="height:2px;background:rgba(255,255,255,.85);margin-bottom:10px"></div>
+        <div style="display:flex;gap:12px;align-items:baseline;padding-bottom:4px">
+          <span style="font-size:13px;font-weight:600;color:#FF7A10;letter-spacing:0.06em">06</span>
+          <span style="font-size:19px;font-weight:600;letter-spacing:-0.01em">Wallpaper alternativo</span>
+        </div>
+        <div style="font-size:13px;line-height:1.5;color:rgba(255,255,255,.59);padding-bottom:16px;max-width:440px">Dentro de la paleta: negro con el resplandor ambar corrido al borde inferior derecho y una l&iacute;nea de horizonte. Deja libre la esquina de la hora.</div>
+        <div style="background:#000;padding:20px;width:520px;box-sizing:border-box">
+          <div style="width:480px;height:320px;position:relative;overflow:hidden;font-family:Montserrat,sans-serif;color:#fff;background:radial-gradient(150% 62% at 82% 122%, rgba(255,122,16,.55) 0%, rgba(255,122,16,.14) 40%, transparent 72%), linear-gradient(to top, rgba(255,122,16,.10), transparent 46%), #000">
+            <div style="position:absolute;left:0;right:0;top:244px;height:1px;background:linear-gradient(to right, transparent, rgba(255,122,16,.45) 62%, rgba(255,122,16,.12))"></div>
+            <div style="position:absolute;inset:0;background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E&quot;);opacity:.05;mix-blend-mode:overlay"></div>
+            <div style="position:absolute;left:24px;top:122px;font-size:96px;line-height:96px;font-weight:500;letter-spacing:-0.04em;font-variant-numeric:tabular-nums">22:41</div>
+            <div style="position:absolute;left:24px;top:228px;font-size:18px;line-height:22px;font-weight:400;opacity:.69">Sabado 5 de Septiembre</div>
+            <div style="position:absolute;right:24px;top:22px;height:36px;border-radius:18px;background:rgba(255,255,255,.08);display:flex;align-items:center;gap:8px;padding:0 14px">
+              <span style="width:8px;height:8px;border-radius:4px;background:#FF7A10;display:block"></span>
+              <span style="font-size:14px;font-weight:500;opacity:.69">Conectando</span>
+            </div>
+            <div style="position:absolute;left:0;width:480px;top:303px;display:flex;justify-content:center;gap:10px">
+              <span style="width:6px;height:6px;border-radius:3px;background:#FF7A10;display:block"></span>
+              <span style="width:6px;height:6px;border-radius:3px;background:rgba(255,255,255,.24);display:block"></span>
+              <span style="width:6px;height:6px;border-radius:3px;background:rgba(255,255,255,.24);display:block"></span>
+              <span style="width:6px;height:6px;border-radius:3px;background:rgba(255,255,255,.24);display:block"></span>
+            </div>
+            <sc-if value="{{ nightMode }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;inset:0;background:#000;opacity:.45"></div>
+            </sc-if>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;nightMode&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Estados del aparato&quot;},&quot;reposo&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Estados del aparato&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      nightMode: this.props.nightMode ?? false,
+      reposo: this.props.reposo ?? false
+    };
+  }
+}
+</script>
+</body>
+</html>

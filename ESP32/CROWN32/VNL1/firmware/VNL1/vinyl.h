@@ -36,8 +36,10 @@ void vinyl_set_album(uint8_t idx, bool animate);
 
 // Etiqueta con texto y color propios, para discos que no son un album
 // (hoy: la alarma). Misma pieza, contenido distinto.
+// cover = nullptr dibuja la etiqueta de color con el texto; con imagen, la
+// imagen ocupa el disco igual que en cualquier album.
 void vinyl_set_custom(const char* name, const char* sub, uint32_t color,
-                      bool animate);
+                      bool animate, const uint16_t* cover = nullptr);
 
 void vinyl_set_spinning(bool on);
 bool vinyl_spinning();

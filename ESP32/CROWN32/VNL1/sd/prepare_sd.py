@@ -38,7 +38,10 @@ AUDIO_EXT = {".mp3", ".m4a", ".aac", ".wav", ".flac", ".ogg", ".opus", ".aiff", 
 IMG_EXT   = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 JUNK      = {".DS_Store", ".Spotlight-V100", ".fseventsd", ".Trashes", "._.Trashes"}
 
+ESPECIALES = {}
+
 ORIGEN   = "_origen"
+ASSETS   = "assets"      # caratulas de los discos especiales (alarma, ajustes)
 # La caratula se genera al tamano del DISCO, no de la etiqueta: en la
 # biblioteca ocupa el disco completo. Debe coincidir con VINYL_DISC_D.
 LABEL_PX = 336
@@ -161,6 +164,83 @@ def duration_s(path: Path) -> int:
     return int(round(float(json.loads(out)["format"]["duration"])))
 
 
+# El DFPlayer no entrega metadata: si el nombre de la cancion no sale de aqui,
+# no sale de ningun lado. Se leen del archivo ORIGEN y no del convertido,
+# porque el origen es el que trae los tags de donde sea que vino la musica.
+NUM_AL_INICIO = re.compile(r"^\s*\d{1,3}\s*[-_.)]?\s+")
+
+# Casi toda esta musica viene de YouTube, y los tags traen el ruido del titulo
+# del video. Se quita solo el parentesis o corchete que contenga una de estas
+# palabras: "(Latino)" o "(Spanish Version)" dicen algo y se quedan.
+RUIDO = re.compile(
+    r"[\(\[][^)\]]*(official|oficial|lyric|letra|audio|video|remaster|"
+    r"\bhd\b|\bhq\b|\b4k\b|visualizer|explicit|original album version|"
+    r"full album|sub espanol|subtitulado)[^)\]]*[\)\]]", re.I)
+EXT_PEGADA = re.compile(r"\.(wmv|mp4|mkv|avi|m4a|mp3|webm)\b", re.I)
+# El identificador que yt-dlp pega al final: "[lMRziQRmYLI]". Son once
+# caracteres y siempre al final, asi que se puede quitar sin riesgo.
+ID_YOUTUBE = re.compile(r"\s*\[[A-Za-z0-9_-]{11}\]\s*$")
+# Titulos que el tag trae pero que no dicen nada: vale mas el nombre del archivo.
+VACIOS = {"untitled", "unknown", "track", "audio track", "sin titulo", ""}
+
+
+def limpiar_titulo(t: str, artista: str) -> str:
+    t = RUIDO.sub("", t)
+    t = ID_YOUTUBE.sub("", t)
+    t = EXT_PEGADA.sub("", t)
+    # "Blur - Song 2" con artista "Blur" -> "Song 2". Solo si de verdad coincide:
+    # en "C418 - Beginning" con artista "SMORT" no hay nada que quitar.
+    if artista:
+        a = re.escape(artista.strip())
+        t = re.sub(rf"^\s*{a}\s*[-–|]\s*", "", t, flags=re.I)
+    t = re.sub(r"\s+", " ", t)
+    return t.strip(" -–|.,")
+
+
+def corta(s: str, n: int) -> str:
+    """Recorta sin partir palabras a la mitad."""
+    if len(s) <= n:
+        return s
+    corte = s[:n].rsplit(" ", 1)[0]
+    return (corte or s[:n]).rstrip(" -–|.,")
+
+
+def tags(path: Path):
+    """Titulo y artista crudos del archivo. Vacios si no hay tags."""
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format_tags=title,artist",
+             "-of", "json", str(path)],
+            capture_output=True, text=True, check=True).stdout
+        t = json.loads(out).get("format", {}).get("tags", {}) or {}
+    except Exception:
+        t = {}
+    # Las llaves llegan con mayusculas distintas segun quien escribio el tag.
+    baja = {k.lower(): (v or "").strip() for k, v in t.items()}
+    return baja.get("title", ""), baja.get("artist", "")
+
+
+def pista_meta(f: Path, i: int, meta: dict):
+    """(titulo, artista) ya limpios. album.txt manda sobre los tags.
+
+    En album.txt se puede poner:
+        artista = C418          <- para todas las pistas del disco
+        1 = Beginning           <- titulo de una pista concreta
+        1.artista = Blur        <- artista de una pista concreta
+    Es la salida para los tags que vienen del canal de YouTube y no del autor:
+    ningun script puede adivinar que "SMORT" no es quien compuso Minecraft.
+    """
+    titulo, artista = tags(f)
+    artista = meta.get(f"{i}.artista", meta.get("artista", artista))
+    if titulo.strip().lower() in VACIOS:
+        titulo = ""
+    if not titulo:
+        # "03 - Cancion.mp3" -> "Cancion". El numero ya lo dice el aparato.
+        titulo = NUM_AL_INICIO.sub("", f.stem).strip() or f.stem
+    titulo = meta.get(str(i), limpiar_titulo(titulo, artista))
+    return corta(c_str(titulo), 44), corta(c_str(artista), 30)
+
+
 def convert(src: Path, dst: Path):
     # 192kbps CBR 44.1kHz: dentro de lo que el DFPlayer digiere con margen, y
     # sin VBR (algunos lotes se atragantan al buscar dentro de un VBR).
@@ -271,7 +351,8 @@ def write_albums_h(path: Path, manifest):
          "// NO editar a mano: la proxima corrida lo sobrescribe.",
          "//",
          "// El DFPlayer no reporta duracion ni metadata: todo sale de aqui. Las",
-         "// duraciones son reales, medidas con ffprobe. El color es el dominante",
+         "// duraciones y los nombres de pista son reales, sacados con ffprobe de",
+         "// los archivos originales. El color es el dominante",
          "// de la caratula, y se usa en la etiqueta y en el anillo de LEDs.",
          "#pragma once",
          "#include <Arduino.h>",
@@ -284,6 +365,8 @@ def write_albums_h(path: Path, manifest):
          "  uint8_t         tracks;",
          "  uint16_t        seconds;        // total del album",
          "  const uint16_t* track_seconds;  // duracion de cada pista",
+         "  const char* const* track_names; // titulo de cada pista",
+         "  const char* const* track_artists;",
          "  uint32_t        color;",
          "  const uint16_t* cover;          // nullptr = etiqueta dibujada",
          "  const uint32_t* anillo;         // 8 colores, uno por LED",
@@ -295,6 +378,14 @@ def write_albums_h(path: Path, manifest):
                  f"{{ {', '.join(str(x) for x in d)} }};")
     L.append("")
     for a in manifest:
+        n = a.get("nombres") or [""]
+        ar = a.get("artistas") or [""]
+        L.append(f"static const char* const NOMBRES_{a['folder']:02d}[] = "
+                 + "{ " + ", ".join(f'"{x}"' for x in n) + " };")
+        L.append(f"static const char* const ARTISTAS_{a['folder']:02d}[] = "
+                 + "{ " + ", ".join(f'"{x}"' for x in ar) + " };")
+    L.append("")
+    for a in manifest:
         if a.get("anillo"):
             L.append(f"static const uint32_t RING_{a['folder']:02d}[8] = {{ "
                      + ", ".join(f"0x{c:06X}" for c in a["anillo"]) + " };")
@@ -303,12 +394,60 @@ def write_albums_h(path: Path, manifest):
         cover = f"COVER_{a['folder']:02d}" if a["cover"] else "nullptr"
         L.append(f'  {{ {a["folder"]}, "{a["name"]}", "{a["subtitle"]}", '
                  f'{len(a["durations"])}, {sum(a["durations"])}, '
-                 f'TRACKS_{a["folder"]:02d}, 0x{a["color"]:06X}, {cover}, '
+                 f'TRACKS_{a["folder"]:02d}, NOMBRES_{a["folder"]:02d}, '
+                 f'ARTISTAS_{a["folder"]:02d}, 0x{a["color"]:06X}, {cover}, '
                  f'{("RING_%02d" % a["folder"]) if a.get("anillo") else "nullptr"} }},')
     L += ["};", "",
           "static const uint8_t ALBUM_COUNT = sizeof(ALBUMS) / sizeof(ALBUMS[0]);",
           ""]
     path.write_text("\n".join(L))
+
+
+def cover_especial(nombre: str, here: Path):
+    """Caratula de un disco que no vive en la microSD (alarma, ajustes).
+
+    Estos dos no son albumes: son parte del firmware. Su imagen vive en
+    sd/assets/ y se procesa igual que cualquier portada.
+    """
+    d = here / ASSETS
+    if not d.is_dir():
+        return None, None, None
+    for p in sorted(d.iterdir()):
+        if p.stem.lower() == nombre and p.suffix.lower() in IMG_EXT and es_util(p):
+            print(f"caratula especial: {p.name} -> {nombre}")
+            return process_cover(p)
+    return None, None, None
+
+
+def write_especiales(fw: Path, here: Path):
+    """Caratulas de Alarma y Ajustes, en su propio par de archivos.
+
+    Separadas de covers.h a proposito: no dependen de la microSD, asi que se
+    pueden regenerar sin tenerla conectada. Alarma y Ajustes son parte del
+    firmware, no albumes.
+    """
+    H = ["// VNL-1 — Caratulas de los discos especiales. GENERADO, no editar.",
+         "#pragma once", "#include <Arduino.h>", ""]
+    C = ["// VNL-1 — Datos de las caratulas especiales. GENERADO, no editar.",
+         '#include "especiales.h"', ""]
+    for nombre in ("alarma", "ajustes"):
+        col, px, anillo = cover_especial(nombre, here)
+        MAY = nombre.upper()
+        if not px:
+            H.append(f"#define COVER_{MAY}_OK 0")
+            continue
+        H.append(f"#define COVER_{MAY}_OK 1")
+        H.append(f"#define COLOR_{MAY}_AUTO 0x{col:06X}")
+        H.append(f"extern const uint16_t COVER_{MAY}[];")
+        H.append(f"static const uint32_t RING_{MAY}[8] = {{ "
+                 + ", ".join(f"0x{c:06X}" for c in anillo) + " };")
+        C.append(f"const uint16_t COVER_{MAY}[] = {{")
+        for i in range(0, len(px), 16):
+            C.append("  " + ",".join(f"0x{v:04X}" for v in px[i:i + 16]) + ",")
+        C += ["};", ""]
+    H.append("")
+    (fw / "especiales.h").write_text("\n".join(H))
+    (fw / "especiales.cpp").write_text("\n".join(C))
 
 
 def write_covers_h(path: Path, manifest):
@@ -330,6 +469,7 @@ def write_covers_h(path: Path, manifest):
          ""]
     C = ['// VNL-1 — Definicion UNICA de las caratulas. GENERADO, no editar.',
          '#include "covers.h"', '']
+
     for a in manifest:
         if not a["cover"]:
             continue
@@ -344,6 +484,18 @@ def write_covers_h(path: Path, manifest):
     path.with_suffix(".cpp").write_text("\n".join(C))
 
 
+def flashear(fw: Path):
+    ports = glob.glob("/dev/cu.usbmodem*")
+    if not ports:
+        print("\nLa perilla no esta conectada: no puedo flashear.")
+        print("Conectala por USB y vuelve a correr esto.")
+        return
+    print(f"\nCompilando y flasheando en {ports[0]} ...\n")
+    r = subprocess.run(["arduino-cli", "compile", "--upload", "-p", ports[0],
+                        "--fqbn", FQBN] + BUILD_PROPS + [str(fw)])
+    print("\nListo." if r.returncode == 0 else "\nFallo el flasheo.")
+
+
 # ── Principal ────────────────────────────────────────────────────────────────
 def main():
     here = Path(__file__).resolve().parent
@@ -355,11 +507,18 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="no escribe nada")
     args = ap.parse_args()
 
+    # Las caratulas de Alarma y Ajustes viven en el Mac, no en la tarjeta, asi
+    # que se actualizan aunque no haya microSD conectada.
+    if not args.dry_run:
+        write_especiales(fw, here)
+
     card = Path(args.card) if args.card else find_card()
     if not card or not card.is_dir():
-        print("No encuentro la microSD.")
-        print("Conectala al Mac y vuelve a correr esto.")
-        return 1
+        print("Sin microSD: solo se actualizaron Alarma y Ajustes.")
+        print("Conectala si tambien quieres sincronizar la musica.\n")
+        if args.flash and not args.dry_run:
+            flashear(fw)
+        return 0
     print(f"Tarjeta: {card}\n")
 
     src = card / ORIGEN
@@ -408,6 +567,7 @@ def main():
         print(f"/{num:02d}  {nombre:<22} {len(files)} cancion(es)")
 
         durations = []
+        nombres, artistas = [], []
         odir = card / f"{num:02d}"
         files = files[:255]
         if not args.dry_run:
@@ -415,8 +575,10 @@ def main():
 
         saltar = (not args.dry_run) and ya_convertido(d, odir, files)
         if saltar:
-            for i in range(1, len(files) + 1):
+            for i, f in enumerate(files, start=1):
                 durations.append(duration_s(odir / f"{i:03d}.mp3"))
+                t, ar = pista_meta(f, i, meta)
+                nombres.append(t); artistas.append(ar)
             print(f"      musica sin cambios, no se reconvierte")
         else:
             # Uno por uno y en orden: el DFPlayer sigue la tabla FAT, no los
@@ -429,7 +591,9 @@ def main():
                     convert(f, target)
                     dur = duration_s(target)
                 durations.append(dur)
-                print(f"      {i:03d}.mp3  {dur//60}:{dur%60:02d}  {f.name[:42]}")
+                t, ar = pista_meta(f, i, meta)
+                nombres.append(t); artistas.append(ar)
+                print(f"      {i:03d}.mp3  {dur//60}:{dur%60:02d}  {t[:42]}")
             if not args.dry_run and files:
                 (d / ".sync").write_text(firma(files))
 
@@ -457,6 +621,8 @@ def main():
 
         manifest.append({
             "folder": num,
+            "nombres": nombres,
+            "artistas": artistas,
             "name": c_str(meta.get("nombre", nombre)).upper(),
             "subtitle": c_str(meta.get("subtitulo", meta.get("subtitle", ""))),
             "durations": durations,
@@ -475,15 +641,7 @@ def main():
     print(f"\n{len(manifest)} disco(s) en la tarjeta.")
 
     if args.flash and not args.dry_run:
-        ports = glob.glob("/dev/cu.usbmodem*")
-        if not ports:
-            print("\nLa perilla no esta conectada: no puedo flashear.")
-            print("Conectala por USB y vuelve a correr esto.")
-            return 0
-        print(f"\nCompilando y flasheando en {ports[0]} ...\n")
-        r = subprocess.run(["arduino-cli", "compile", "--upload", "-p", ports[0],
-                            "--fqbn", FQBN] + BUILD_PROPS + [str(fw)])
-        print("\nListo." if r.returncode == 0 else "\nFallo el flasheo.")
+        flashear(fw)
     return 0
 
 

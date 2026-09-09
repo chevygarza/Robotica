@@ -11,4 +11,6 @@
 extern const uint16_t COVER_01[];
 extern const uint16_t COVER_02[];
 extern const uint16_t COVER_03[];
-extern const uint16_t COVER_04[];
+extern const uint16_t COVER_05[];
+extern const uint16_t COVER_06[];
+extern const uint16_t COVER_99[];

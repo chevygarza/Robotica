@@ -20,6 +20,7 @@
 #include "alarm.h"
 #include "settings.h"
 #include "battery.h"
+#include "weather.h"
 
 // Etapa 3: en 1 el DFPlayer entra en juego. Sin el modulo conectado la UI
 // funciona completa, solo sin sonido.
@@ -92,6 +93,9 @@ void setup() {
   // El WiFi arranca despues de la UI: asi la pantalla ya esta viva mientras la
   // red negocia, en vez de dejar el aparato en negro esperando a un router.
   clock_begin();
+  // El clima cuelga del WiFi que ya levanto el reloj, y espera solito a que la
+  // red asocie. Si nunca hay red, el reloj sigue dando la hora sin el.
+  weather_begin();
 
   // Primer render completo antes de encender la luz: el fade revela la UI ya
   // dibujada en vez de mostrar el barrido de LVGL.
