@@ -1,7 +1,8 @@
 #pragma once
 #include <Arduino.h>
 
-// Energia de microfono (RMS) via ES7210 + I2S. Best-effort; si falla, energy=0.
+// Nivel de microfono (RMS suavizado, 0..1) via ES8311 + I2S en una tarea propia.
+// Si el codec no responde, micOk()=false y micEnergy() devuelve 0.
 bool micBegin();
-float micEnergy();   // 0..1 aproximado
+float micEnergy();
 bool micOk();

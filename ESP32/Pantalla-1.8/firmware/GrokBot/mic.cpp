@@ -1,151 +1,112 @@
 #include "mic.h"
 #include <Wire.h>
+#include <ESP_I2S.h>
 #include "board.h"
-#include <driver/i2s.h>
+#include "es8311.h"
 
-// TODO mic energy: ruta I2S + ES7210 ligera. Si la placa no responde,
-// micOk()=false y el face sigue solo con IMU.
+// Mic integrado de la AMOLED-1.8: codec ES8311 (I2C 0x18) + I2S estandar.
+// Secuencia de init tomada del demo oficial 15_ES8311 (sin reproduccion).
 
-#define GROK_ENABLE_MIC 0  // off hasta que display funcione
+#define GROK_ENABLE_MIC 1
 
 #if GROK_ENABLE_MIC
+static const int      MIC_RATE   = 16000;
+static const size_t   MIC_CHUNK  = 512;        // bytes: 128 frames estereo = 8 ms
+static const float    MIC_GAIN   = 6.f;        // ganancia practica sobre el RMS normalizado
+static const float    MIC_FLOOR  = 0.01f;      // ruido de fondo que se descuenta
+
+static I2SClass g_i2s;
 static bool g_micOk = false;
-static float g_energy = 0.f;
+static volatile float g_energy = 0.f;
 
-static bool axpEnableMicRail() {
-  // AXP2101: encender ALDO1 @ 3.3V (mics), sin apagar el resto a lo bestia.
-  auto wr = [](uint8_t reg, uint8_t val) -> bool {
-    Wire.beginTransmission(AXP2101_ADDR);
-    Wire.write(reg);
-    Wire.write(val);
-    return Wire.endTransmission() == 0;
+static bool codecInit() {
+  es8311_handle_t h = es8311_create(0 /* Wire */, ES8311_ADDRRES_0);
+  if (!h) return false;
+  const es8311_clock_config_t clk = {
+    .mclk_inverted = false,
+    .sclk_inverted = false,
+    .mclk_from_mclk_pin = true,
+    .mclk_frequency = MIC_RATE * 256,
+    .sample_frequency = MIC_RATE,
   };
-  auto rd = [](uint8_t reg, uint8_t &out) -> bool {
-    Wire.beginTransmission(AXP2101_ADDR);
-    Wire.write(reg);
-    if (Wire.endTransmission(false) != 0) return false;
-    if (Wire.requestFrom((int)AXP2101_ADDR, 1) != 1) return false;
-    out = Wire.read();
-    return true;
-  };
+  if (es8311_init(h, &clk, ES8311_RESOLUTION_16, ES8311_RESOLUTION_16) != ESP_OK) return false;
+  if (es8311_sample_frequency_config(h, clk.mclk_frequency, clk.sample_frequency) != ESP_OK) return false;
+  if (es8311_microphone_config(h, false) != ESP_OK) return false;
+  es8311_voice_volume_set(h, 0, NULL);                    // DAC en silencio
+  es8311_microphone_gain_set(h, ES8311_MIC_GAIN_24DB);
+  return true;
+}
 
-  uint8_t chip = 0;
-  if (!rd(0x03, chip)) {
-    Serial.println("[mic] AXP2101 no responde — sigo sin rail dedicado");
-    return false;
+static void micTask(void *) {
+  static uint8_t buf[MIC_CHUNK];
+  static int16_t peakL = 0, peakR = 0;
+  static uint32_t lastDiag = 0, reads = 0;
+  for (;;) {
+    size_t n = g_i2s.readBytes((char *)buf, sizeof(buf));
+    if (n < 4) { vTaskDelay(pdMS_TO_TICKS(5)); continue; }
+    reads++;
+    const int16_t *s = (const int16_t *)buf;
+    size_t count = n / 2;
+    double acc = 0;
+    for (size_t i = 0; i < count; i++) {
+      double v = s[i]; acc += v * v;
+      int16_t a = s[i] < 0 ? -s[i] : s[i];
+      if (i & 1) { if (a > peakR) peakR = a; } else { if (a > peakL) peakL = a; }
+    }
+    if (millis() - lastDiag > 2000) {
+      Serial.printf("[mic] diag reads=%lu bytes=%u peakL=%d peakR=%d s0=%d s1=%d\n",
+                    (unsigned long)reads, (unsigned)n, peakL, peakR, s[0], s[1]);
+      peakL = peakR = 0; lastDiag = millis();
+    }
+    float rms = sqrtf((float)(acc / (double)count)) / 32768.f;
+    float e = (rms - MIC_FLOOR) * MIC_GAIN;
+    e = e < 0.f ? 0.f : (e > 1.f ? 1.f : e);
+    // ataque rapido, caida lenta: la boca abre al instante y cierra suave
+    float cur = g_energy;
+    g_energy = (e > cur) ? (cur * 0.4f + e * 0.6f) : (cur * 0.85f + e * 0.15f);
   }
-  // ALDO1 voltage 3.3V: reg 0x92 = (3300-500)/100 = 28
-  wr(0x92, 28);
-  uint8_t ldo = 0;
-  rd(0x90, ldo);
-  wr(0x90, (uint8_t)(ldo | 0x01)); // bit0 ALDO1
-  Serial.printf("[mic] AXP2101 chip=0x%02X ALDO1 on (0x90=0x%02X)\n", chip, ldo | 1);
-  return true;
 }
 
-static bool es7210Write(uint8_t reg, uint8_t val) {
-  Wire.beginTransmission(ES7210_ADDR);
-  Wire.write(reg);
-  Wire.write(val);
-  return Wire.endTransmission() == 0;
+static uint8_t rdReg(uint8_t addr, uint8_t reg) {
+  Wire.beginTransmission(addr); Wire.write(reg);
+  if (Wire.endTransmission(false) != 0) return 0xEE;
+  if (Wire.requestFrom((int)addr, 1) != 1) return 0xEE;
+  return Wire.read();
 }
 
-static bool es7210InitLite() {
-  // Secuencia minima inspirada en demos ESP-BOX / Waveshare (slave I2S, 16k).
-  // No es un driver completo — si no hay energia util, el face ignora el mic.
-  if (!es7210Write(0x00, 0xFF)) return false; // soft reset
-  delay(10);
-  es7210Write(0x00, 0x41); // take out of reset, enable
-  es7210Write(0x01, 0x1F); // clock on
-  es7210Write(0x02, 0x01); // master clock divider-ish
-  es7210Write(0x07, 0x20); // SDP
-  es7210Write(0x08, 0x10);
-  es7210Write(0x09, 0x30); // ADC1/2 power
-  es7210Write(0x0A, 0x30);
-  es7210Write(0x0B, 0x00);
-  es7210Write(0x11, 0x60);
-  es7210Write(0x12, 0x02);
-  es7210Write(0x22, 0x00);
-  es7210Write(0x40, 0xC3); // ADC1
-  es7210Write(0x41, 0x70);
-  es7210Write(0x42, 0xC3); // ADC2
-  es7210Write(0x43, 0x70);
-  delay(20);
-  Serial.println("[mic] ES7210 init lite ok");
-  return true;
+static void dumpDiag() {
+  // AXP2101: 0x90 = LDO enable bits (ALDO1..4, BLDO1..2, CPUSLDO, DLDO1); 0x92 = ALDO1 V
+  Serial.printf("[mic] AXP2101 id=0x%02X ldo_en(0x90)=0x%02X aldo1(0x92)=%u dcdc_en(0x80)=0x%02X\n",
+                rdReg(AXP2101_ADDR, 0x03), rdReg(AXP2101_ADDR, 0x90),
+                rdReg(AXP2101_ADDR, 0x92), rdReg(AXP2101_ADDR, 0x80));
+  // ES8311: 0x00 reset/pwr, 0x01 clk, 0x14 sys/mic, 0x16 adc pga, 0x17 adc vol, 0x0A sdp out, 0xFD id
+  Serial.printf("[mic] ES8311 id=0x%02X%02X r00=0x%02X r01=0x%02X r0A=0x%02X r14=0x%02X r16=0x%02X r17=0x%02X\n",
+                rdReg(ES8311_ADDR, 0xFD), rdReg(ES8311_ADDR, 0xFE), rdReg(ES8311_ADDR, 0x00),
+                rdReg(ES8311_ADDR, 0x01), rdReg(ES8311_ADDR, 0x0A), rdReg(ES8311_ADDR, 0x14),
+                rdReg(ES8311_ADDR, 0x16), rdReg(ES8311_ADDR, 0x17));
 }
 
 bool micBegin() {
-  axpEnableMicRail();
-  delay(30);
-  if (!es7210InitLite()) {
-    Serial.println("[mic] ES7210 no responde — TODO mic energy deshabilitado");
-    g_micOk = false;
-    return false;
-  }
-
-  i2s_config_t cfg = {};
-  cfg.mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX);
-  cfg.sample_rate = 16000;
-  cfg.bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT;
-  cfg.channel_format = I2S_CHANNEL_FMT_ONLY_LEFT;
-  cfg.communication_format = I2S_COMM_FORMAT_STAND_I2S;
-  cfg.intr_alloc_flags = 0;
-  cfg.dma_buf_count = 4;
-  cfg.dma_buf_len = 256;
-  cfg.use_apll = false;
-  cfg.tx_desc_auto_clear = false;
-  cfg.fixed_mclk = 0;
-
-  if (i2s_driver_install(I2S_NUM_0, &cfg, 0, NULL) != ESP_OK) {
-    Serial.println("[mic] i2s_driver_install fail");
-    g_micOk = false;
-    return false;
-  }
-
-  i2s_pin_config_t pins = {};
-  pins.mck_io_num   = PIN_I2S_MCLK;
-  pins.bck_io_num   = PIN_I2S_BCLK;
-  pins.ws_io_num    = PIN_I2S_LRCK;
-  pins.data_out_num = I2S_PIN_NO_CHANGE;
-  pins.data_in_num  = PIN_I2S_DIN;
-
-  if (i2s_set_pin(I2S_NUM_0, &pins) != ESP_OK) {
-    Serial.println("[mic] i2s_set_pin fail");
-    i2s_driver_uninstall(I2S_NUM_0);
-    g_micOk = false;
-    return false;
-  }
-
-  // PA off — no queremos altavoz para energy
   pinMode(PIN_I2S_PA, OUTPUT);
-  digitalWrite(PIN_I2S_PA, LOW);
+  digitalWrite(PIN_I2S_PA, LOW);   // bocina apagada
 
+  g_i2s.setPins(PIN_I2S_BCLK, PIN_I2S_LRCK, PIN_I2S_DOUT, PIN_I2S_DIN, PIN_I2S_MCLK);
+  if (!g_i2s.begin(I2S_MODE_STD, MIC_RATE, I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO, I2S_STD_SLOT_BOTH)) {
+    Serial.println("[mic] I2S begin fallo");
+    return false;
+  }
+  if (!codecInit()) {
+    Serial.println("[mic] ES8311 no responde — cara solo con IMU");
+    return false;
+  }
+  dumpDiag();
+  xTaskCreatePinnedToCore(micTask, "mic", 4096, nullptr, 1, nullptr, 0);
   g_micOk = true;
-  Serial.println("[mic] I2S RX listo (energy RMS)");
+  Serial.println("[mic] ES8311 + I2S listos (tarea en core 0)");
   return true;
 }
 
-float micEnergy() {
-  if (!g_micOk) return 0.f;
-  int16_t buf[256];
-  size_t n = 0;
-  if (i2s_read(I2S_NUM_0, buf, sizeof(buf), &n, 0) != ESP_OK || n < 4) {
-    return g_energy * 0.9f;
-  }
-  size_t samples = n / sizeof(int16_t);
-  double acc = 0;
-  for (size_t i = 0; i < samples; i++) {
-    double v = (double)buf[i];
-    acc += v * v;
-  }
-  float rms = sqrtf((float)(acc / (double)samples)) / 32768.f;
-  // Suavizado + ganancia practica
-  float e = constrain(rms * 8.f, 0.f, 1.f);
-  g_energy = g_energy * 0.7f + e * 0.3f;
-  return g_energy;
-}
-
+float micEnergy() { return g_micOk ? g_energy : 0.f; }
 bool micOk() { return g_micOk; }
 
 #else

@@ -64,7 +64,7 @@ tools/.venv/bin/python tools/monitor.py /dev/cu.usbmodemXXX [seg]   # serial SIN
    contenido viejo NO prueba que el firmware nuevo dibuje.
 
 ## Pendiente
-- [ ] Mic: reescribir `mic.cpp` para ES8311 (demo oficial `15_ES8311`), hoy `GROK_ENABLE_MIC 0`
+- [x] Mic ES8311 por I2S en tarea core 0 (`mic.cpp`, driver oficial `es8311.c`). Validado en vivo.
 - [ ] Leer giroscopio del QMI8658 (hoy solo acelerometro)
 - [ ] Diseño "Bob Aerogro" que quiere Jose (falta referencia visual)
 - [ ] Tactil (CST816/FT3168) si hace falta
