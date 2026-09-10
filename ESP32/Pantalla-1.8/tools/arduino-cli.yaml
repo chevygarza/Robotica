@@ -1,0 +1,5 @@
+# Entorno aislado para la Waveshare 1.83: core esp32 3.3.11 (Waveshare exige >=3.0.5),
+# sin tocar el 2.0.17 global de la perilla. tools/build.sh fija los directorios.
+board_manager:
+  additional_urls:
+    - https://espressif.github.io/arduino-esp32/package_esp32_index.json

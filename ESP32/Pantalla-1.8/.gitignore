@@ -1,0 +1,6 @@
+build/
+tools/arduino-data
+tools/downloads
+tools/.venv/
+backup/*.bin
+.DS_Store
