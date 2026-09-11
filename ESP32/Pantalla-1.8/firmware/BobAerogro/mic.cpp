@@ -39,24 +39,14 @@ static bool codecInit() {
 
 static void micTask(void *) {
   static uint8_t buf[MIC_CHUNK];
-  static int16_t peakL = 0, peakR = 0;
-  static uint32_t lastDiag = 0, reads = 0;
   for (;;) {
     size_t n = g_i2s.readBytes((char *)buf, sizeof(buf));
     if (n < 4) { vTaskDelay(pdMS_TO_TICKS(5)); continue; }
-    reads++;
     const int16_t *s = (const int16_t *)buf;
     size_t count = n / 2;
     double acc = 0;
     for (size_t i = 0; i < count; i++) {
       double v = s[i]; acc += v * v;
-      int16_t a = s[i] < 0 ? -s[i] : s[i];
-      if (i & 1) { if (a > peakR) peakR = a; } else { if (a > peakL) peakL = a; }
-    }
-    if (millis() - lastDiag > 2000) {
-      Serial.printf("[mic] diag reads=%lu bytes=%u peakL=%d peakR=%d s0=%d s1=%d\n",
-                    (unsigned long)reads, (unsigned)n, peakL, peakR, s[0], s[1]);
-      peakL = peakR = 0; lastDiag = millis();
     }
     float rms = sqrtf((float)(acc / (double)count)) / 32768.f;
     float e = (rms - MIC_FLOOR) * MIC_GAIN;

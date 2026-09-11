@@ -1,4 +1,4 @@
-// GrokBot — cara Grok en la Waveshare ESP32-S3-Touch-AMOLED-1.8
+// Bob Aerogro — blob animado en la Waveshare ESP32-S3-Touch-AMOLED-1.8
 // Panel CO5300 por QSPI (Arduino_GFX 1.6.4, bundle arduino-v2 de Waveshare).
 // Se dibuja en un canvas en PSRAM y se manda el cuadro completo: sin parpadeo.
 #include <Arduino.h>
@@ -39,15 +39,15 @@ void setup() {
   Serial.begin(115200);
   Serial.setTxTimeoutMs(0);  // no bloquear si nadie escucha el USB
   delay(300);
-  Serial.println("\n[GrokBot] boot (AMOLED-1.8 / CO5300 QSPI)");
+  Serial.println("\n[bob] boot (AMOLED-1.8 / CO5300 QSPI)");
 
   Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
   Wire.setClock(400000);
 
-  if (!panelPowerOn()) Serial.println("[GrokBot] XCA9554 no responde — panel sin power/reset");
+  if (!panelPowerOn()) Serial.println("[bob] XCA9554 no responde — panel sin power/reset");
 
   if (!gfx->begin()) {  // inicia canvas + panel
-    Serial.println("[GrokBot] FATAL: gfx->begin failed");
+    Serial.println("[bob] FATAL: gfx->begin failed");
   }
   panel->setBrightness(255);
 
@@ -55,14 +55,14 @@ void setup() {
   gfx->setCursor(40, LCD_HEIGHT / 2 - 10);
   gfx->setTextColor(rgb565(COL_EYE));
   gfx->setTextSize(3);
-  gfx->println("GrokBot...");
+  gfx->println("Bob Aerogro...");
   gfx->flush();
   delay(300);
 
   imuBegin();
   micBegin();
   faceBegin(gfx);
-  Serial.println("[GrokBot] ready");
+  Serial.println("[bob] ready");
 }
 
 void loop() {
@@ -75,7 +75,7 @@ void loop() {
 
   Emotion e = faceEmotion();
   if (e != lastPrinted || now - lastPrintMs > 3000) {
-    Serial.printf("[GrokBot] emo=%s jerk=%.2f mic=%.2f\n", emotionName(e), imu.jerk, energy);
+    Serial.printf("[bob] emo=%s jerk=%.2f mic=%.2f\n", emotionName(e), imu.jerk, energy);
     lastPrinted = e;
     lastPrintMs = now;
   }

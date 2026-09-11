@@ -50,9 +50,14 @@ tools/.venv/bin/python tools/monitor.py /dev/cu.usbmodemXXX [seg]   # serial SIN
 - FQBN: `FlashMode=qio,FlashSize=16M,PSRAM=opi,USBMode=hwcdc,CDCOnBoot=cdc,PartitionScheme=app3M_fat9M_16MB`
 
 ## Firmware
-- `firmware/GrokBot`: cara animada. Dibuja en `Arduino_Canvas` (PSRAM) y hace
-  `flush()` por cuadro (AMOLED sin parpadeo). Geometria pensada a 240x284 y
-  escalada con `SC=1.5` en `face.cpp`. **Validado en vivo 2026-09-10.**
+- `firmware/BobAerogro`: **Bob Aerogro**, el tamagotchi de Jose. Blob plano de
+  un color con dos ojos blancos; seis animos = seis formas/colores (verde
+  pildora base, azul triangulo escucha, naranja nube habla, cafe flor sorpresa,
+  negro redondo enojo, gris gota dormido). `face.cpp`: contorno polar de 72
+  puntos, morfeo entre formas, relleno por scanlines, ojos como capsulas.
+  Maqueta de referencia (misma geometria): https://claude.ai/code/artifact/7ad4c6df-9f44-403a-b180-5e0909e5d1cc
+  Dibuja en `Arduino_Canvas` (PSRAM) y hace `flush()` por cuadro. Mic ES8311
+  en tarea del core 0. **Validado en vivo 2026-09-10** (cara, IMU y voz).
 - `firmware/HelloWorld`: 01_HelloWorld oficial + secuencia del expansor. Prueba base.
 
 ## Gotchas
@@ -66,5 +71,4 @@ tools/.venv/bin/python tools/monitor.py /dev/cu.usbmodemXXX [seg]   # serial SIN
 ## Pendiente
 - [x] Mic ES8311 por I2S en tarea core 0 (`mic.cpp`, driver oficial `es8311.c`). Validado en vivo.
 - [ ] Leer giroscopio del QMI8658 (hoy solo acelerometro)
-- [ ] Diseño "Bob Aerogro" que quiere Jose (falta referencia visual)
 - [ ] Tactil (CST816/FT3168) si hace falta

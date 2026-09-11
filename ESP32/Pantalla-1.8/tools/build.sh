@@ -1,7 +1,7 @@
 #!/bin/bash
 # Compila un sketch de firmware/ con el entorno AISLADO (core esp32 3.3.11 en tools/).
 # Placa: Waveshare ESP32-S3-Touch-AMOLED-1.8 (CO5300 QSPI). Core 3.3.11 como su CI.
-#   tools/build.sh [Sketch]         compila (default: GrokBot)
+#   tools/build.sh [Sketch]         compila (default: BobAerogro)
 #   tools/build.sh [Sketch] flash   compila y sube — SOLO con OK explicito de Jose
 #   tools/build.sh [Sketch] monitor compila, sube y abre serial (sin DTR/RTS)
 # Primera vez en una Mac nueva (si no existe ../Pantalla-3.5/tools/arduino-data):
@@ -15,7 +15,7 @@ export ARDUINO_DIRECTORIES_DOWNLOADS="$PWD/tools/downloads"
 export ARDUINO_DIRECTORIES_USER="$PWD/tools/arduino-libs"
 # Igual que el CI oficial de Waveshare (AMOLED-1.8: app3M_fat9M_16MB) + PSRAM OPI, QIO y CDC por USB
 FQBN="esp32:esp32:esp32s3:FlashMode=qio,FlashSize=16M,PSRAM=opi,USBMode=hwcdc,CDCOnBoot=cdc,PartitionScheme=app3M_fat9M_16MB,UploadSpeed=921600"
-SKETCH="${1:-GrokBot}"
+SKETCH="${1:-BobAerogro}"
 ACTION="${2:-}"
 PORT=$(ls /dev/cu.usbmodem* 2>/dev/null | head -1)
 

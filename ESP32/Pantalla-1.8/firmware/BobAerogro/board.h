@@ -35,7 +35,7 @@
 #define COL_EYE       0x00D4FFu
 #define COL_EYE_DIM   0x007A99u
 #define COL_GLOW      0x4FC3F7u
-#define COL_WHITE     0xE8F7FFu
+#define COL_WHITE     0xFFFFFFu
 #define COL_FACE      0x121A2Eu
 #define COL_FACE_EDGE 0x1C2740u
 #define COL_MOUTH     0xA8C8D8u
