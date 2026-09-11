@@ -56,6 +56,9 @@ tools/.venv/bin/python tools/monitor.py /dev/cu.usbmodemXXX [seg]   # serial SIN
   negro redondo enojo, gris gota dormido). `face.cpp`: contorno polar de 72
   puntos, morfeo entre formas, relleno por scanlines, ojos como capsulas.
   Maqueta de referencia (misma geometria): https://claude.ai/code/artifact/7ad4c6df-9f44-403a-b180-5e0909e5d1cc
+  (copia en `docs/bob-aerogro-mock.html`). **Guia de diseño completa para
+  reproducir a Bob en otra pantalla/asistente: `docs/BOB-AEROGRO-SPEC.md`**
+  (publicada: https://claude.ai/code/artifact/fcd0e135-ce0c-489e-a232-b8a67c18e09b).
   Dibuja en `Arduino_Canvas` (PSRAM) y hace `flush()` por cuadro. Mic ES8311
   en tarea del core 0. **Validado en vivo 2026-09-10** (cara, IMU y voz).
   - Tamagotchi (`pet.cpp`): hambre/energia/diversion/amor bajan con hora real

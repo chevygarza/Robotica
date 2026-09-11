@@ -1,0 +1,234 @@
+<title>Bob Aerogro</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400&display=swap">
+<style>
+:root{
+  --bg:#EEF0F3; --panel:#FFFFFF; --ink:#1B1F26; --ink-2:#5C6470; --line:#D7DBE2;
+  --accent:#1FA65A; --accent-ink:#FFFFFF; --chip:#E4E7EC; --device:#000;
+  --font-display:'Fredoka',system-ui,sans-serif; --font-body:'IBM Plex Sans',system-ui,sans-serif; --font-mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#14161A; --panel:#1D2026; --ink:#EDEFF3; --ink-2:#9AA3B0; --line:#2C313A; --accent:#2ECC71; --accent-ink:#0B1F14; --chip:#262B33;
+}}
+:root[data-theme="dark"]{
+  --bg:#14161A; --panel:#1D2026; --ink:#EDEFF3; --ink-2:#9AA3B0; --line:#2C313A; --accent:#2ECC71; --accent-ink:#0B1F14; --chip:#262B33;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--font-body)}
+.wrap{max-width:1040px;margin:0 auto;padding:28px 20px 48px}
+header{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:22px}
+h1{font:600 34px/1 var(--font-display);margin:0;letter-spacing:.01em}
+header p{margin:0;color:var(--ink-2)}
+.grid{display:grid;grid-template-columns:400px 1fr;gap:28px;align-items:start}
+@media (max-width:860px){.grid{grid-template-columns:1fr}}
+.device{background:var(--device);border-radius:34px;padding:16px;box-shadow:0 12px 40px rgba(0,0,0,.28);width:400px;max-width:100%;margin:0 auto}
+.device canvas{display:block;width:100%;height:auto;border-radius:22px;background:#000}
+.device .lbl{display:flex;justify-content:space-between;color:#7B8290;font:12px var(--font-mono);padding:10px 6px 0}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+.panel+.panel{margin-top:16px}
+h2{font:600 18px/1.2 var(--font-display);margin:0 0 12px;letter-spacing:.01em}
+.moods{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.mood{display:flex;align-items:center;gap:10px;border:1px solid var(--line);background:var(--chip);color:var(--ink);border-radius:10px;padding:9px 10px;cursor:pointer;font:500 14px var(--font-display);text-align:left}
+.mood:hover{border-color:var(--ink-2)}
+.mood:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mood.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.mood.pin small{color:var(--accent)}
+.mood.pin small::after{content:' · fijado'}
+.mood .sw{width:22px;height:22px;border-radius:50%;flex:none}
+.mood small{display:block;color:var(--ink-2);font:12px var(--font-body)}
+.row{display:grid;grid-template-columns:110px 1fr 58px;align-items:center;gap:12px;margin-top:10px}
+.row label{font-weight:500}
+.row output{font:13px var(--font-mono);color:var(--ink-2);text-align:right;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+button.b{border:1px solid var(--line);background:var(--chip);color:var(--ink);border-radius:10px;padding:8px 14px;cursor:pointer;font:500 14px var(--font-body)}
+button.b.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button.b.on{box-shadow:inset 0 0 0 1px var(--accent);border-color:var(--accent)}
+button.b:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.rules{margin:0;padding:0;list-style:none;display:grid;gap:6px;color:var(--ink-2);font-size:14px}
+.rules b{color:var(--ink);font-weight:500}
+.rules code{font:13px var(--font-mono);background:var(--chip);padding:1px 6px;border-radius:5px;color:var(--ink)}
+.state{font:13px var(--font-mono);color:var(--ink-2);margin-top:12px;display:flex;gap:16px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+.state b{color:var(--accent);font-weight:400}
+@media (prefers-reduced-motion: reduce){ .device{box-shadow:none} }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Bob Aerogro</h1>
+    <p>Maqueta de la cara para la Waveshare AMOLED 1.8" · 368 × 448 · misma geometría que el firmware. Los botones de ánimo lo fijan (clic otra vez para soltar); los sensores mandan cuando nada está fijado.</p>
+  </header>
+
+  <div class="grid">
+    <div>
+      <div class="device">
+        <canvas id="c" width="368" height="448" aria-label="Pantalla simulada con Bob"></canvas>
+        <div class="lbl"><span>CO5300 · 368×448</span><span id="fps">— fps</span></div>
+      </div>
+    </div>
+
+    <div>
+      <section class="panel">
+        <h2>Ánimo</h2>
+        <div class="moods" id="moods"></div>
+        <div class="state">
+          <span>estado <b id="st-emo">IDLE</b></span>
+          <span>mic <b id="st-mic">0.00</b></span>
+          <span>sacudida <b id="st-jerk">0.00</b></span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Sensores simulados</h2>
+        <div class="row"><label for="mic">Micrófono</label><input id="mic" type="range" min="0" max="1" step="0.01" value="0"><output id="mic-o">0.00</output></div>
+        <div class="row"><label for="jerk">Sacudida</label><input id="jerk" type="range" min="0" max="2" step="0.01" value="0"><output id="jerk-o">0.00</output></div>
+        <div class="row"><label for="tilt">Inclinación</label><input id="tilt" type="range" min="-1" max="1" step="0.01" value="0"><output id="tilt-o">0.00</output></div>
+        <div class="actions">
+          <button class="b primary" id="talk">Hablar 3 s</button>
+          <button class="b" id="shake">Sacudir</button>
+          <button class="b" id="hit">Golpe fuerte</button>
+          <button class="b" id="auto">Demo automática</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Reglas (como en el firmware)</h2>
+        <ul class="rules">
+          <li><b>Verde píldora</b> — base, respira y mira alrededor.</li>
+          <li><b>Azul triángulo</b> — escucha: mic &gt; <code>0.22</code>, ojos grandes.</li>
+          <li><b>Naranja nube</b> — habla: mic &gt; <code>0.55</code>, vibra con la voz.</li>
+          <li><b>Café flor</b> — sorpresa: sacudida &gt; <code>0.55</code>, se infla.</li>
+          <li><b>Negro redondo</b> — enojo: sacudida &gt; <code>1.4</code>, ojos entrecerrados.</li>
+          <li><b>Gris gota</b> — dormido: 20 s sin moverse (aquí 8 s), ojos casi cerrados.</li>
+        </ul>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- Definición de Bob: cada ánimo = color + forma polar r(θ) + ojos ----------
+const N = 72;                 // muestras del contorno (igual en el ESP32)
+const R = 118;                // radio base en px del panel 368x448
+const MOODS = {
+  IDLE:      {name:'Verde píldora', sub:'normal',     color:'#2ECC71', tilt:-10, eye:{h:.30,w:.12,gap:.40,rot:0},   shape:(t)=>superellipse(t,1.28,.82,3.6)},
+  LISTENING: {name:'Azul triángulo', sub:'escucha',   color:'#2196F3', tilt:0,   eye:{h:.40,w:.13,gap:.34,rot:0},   shape:(t)=>1.02*(1+.17*Math.cos(3*(t-Math.PI/2)))},
+  TALKING:   {name:'Naranja nube', sub:'habla',       color:'#FF6A00', tilt:0,   eye:{h:.32,w:.12,gap:.38,rot:0},   shape:(t)=>superellipse(t,1.2,.9,2.2)*(1+.13*Math.cos(4*t+Math.PI/4))},
+  SURPRISED: {name:'Café flor', sub:'sorpresa',       color:'#9C6B36', tilt:0,   eye:{h:.44,w:.14,gap:.36,rot:0},   shape:(t)=>1.1*(1+.2*Math.cos(5*t+Math.PI/2))},
+  ANGRY:     {name:'Negro redondo', sub:'enojo',      color:'#2C2C31', tilt:0,   eye:{h:.16,w:.12,gap:.40,rot:22},  shape:(t)=>1.0, ring:'#5B5B63'},
+  SLEEPY:    {name:'Gris gota', sub:'dormido',        color:'#8A8C90', tilt:-8,  eye:{h:.07,w:.13,gap:.38,rot:0},   shape:(t)=>{const u=Math.max(0,Math.cos(t-Math.PI/2));return .98*(1+.45*u*u*u*u);}},
+};
+function superellipse(t,a,b,n){const c=Math.abs(Math.cos(t)/a),s=Math.abs(Math.sin(t)/b);return Math.pow(Math.pow(c,n)+Math.pow(s,n),-1/n);}
+function hex(c){return [parseInt(c.slice(1,3),16),parseInt(c.slice(3,5),16),parseInt(c.slice(5,7),16)];}
+const lerp=(a,b,k)=>a+(b-a)*k;
+
+// ---------- Estado animado (lo que en el firmware es FaceState) ----------
+const cur={radii:new Array(N).fill(1),color:hex(MOODS.IDLE.color),tilt:-10,eyeH:.3,eyeW:.12,eyeGap:.4,eyeRot:0,ring:0,bounce:0,sx:1,sy:1,lookX:0,lookY:0,blink:1};
+let emo='IDLE', forced=null, holdUntil=0, lastMotion=performance.now(), phase=0;
+let nextBlink=performance.now()+1800, blinkUntil=0, lookUntil=0, lookTx=0, lookTy=0;
+
+function pickEmotion(mic,jerk,now){
+  if(jerk>0.08) lastMotion=now;
+  if(forced) return forced;
+  if(now<holdUntil) return emo;
+  let next='IDLE';
+  if(mic>0.55){next='TALKING';holdUntil=now+400;}
+  else if(mic>0.22){next='LISTENING';holdUntil=now+250;}
+  else if(jerk>1.4){next='ANGRY';holdUntil=now+700;}
+  else if(jerk>0.55){next='SURPRISED';holdUntil=now+500;}
+  else if(now-lastMotion>8000) next='SLEEPY';
+  return next;
+}
+
+function update(dt,now,mic,jerk,tilt){
+  const e=pickEmotion(mic,jerk,now);
+  if(e!==emo){emo=e;}
+  const M=MOODS[emo];
+  phase+=dt;
+  const k=Math.min(.45,Math.max(.05,dt*8));       // suavizado (morfeo)
+  for(let i=0;i<N;i++){const t=i/N*Math.PI*2;cur.radii[i]=lerp(cur.radii[i],M.shape(t),k);}
+  const tc=hex(M.color);for(let i=0;i<3;i++)cur.color[i]=lerp(cur.color[i],tc[i],k);
+  cur.tilt=lerp(cur.tilt,M.tilt,k);
+  cur.ring=lerp(cur.ring,M.ring?1:0,k);
+  // ojos + parpadeo
+  let eyeH=M.eye.h;
+  if(emo!=='SLEEPY'){
+    if(now>=nextBlink&&!blinkUntil){blinkUntil=now+110;nextBlink=now+1600+Math.random()*2500;}
+    if(blinkUntil&&now<blinkUntil)eyeH=.04; else if(blinkUntil&&now>=blinkUntil)blinkUntil=0;
+  }
+  cur.eyeH=lerp(cur.eyeH,eyeH,Math.min(.6,dt*14));
+  cur.eyeW=lerp(cur.eyeW,M.eye.w,k);cur.eyeGap=lerp(cur.eyeGap,M.eye.gap,k);cur.eyeRot=lerp(cur.eyeRot,M.eye.rot,k);
+  // mirada: inclinación manda; si no, mira alrededor de vez en cuando
+  let lx=tilt,ly=0;
+  if(Math.abs(tilt)<.12){
+    if(now>lookUntil){ if(Math.random()<.02){lookTx=Math.random()*2-1;lookTy=Math.random()*1.2-.6;lookUntil=now+700+Math.random()*900;} else {lookTx=0;lookTy=0;} }
+    lx=lookTx;ly=lookTy;
+  }
+  if(emo==='SLEEPY'){lx=0;ly=.3;}
+  cur.lookX=lerp(cur.lookX,lx,k);cur.lookY=lerp(cur.lookY,ly,k);
+  // movimiento del cuerpo: respirar, rebotar, vibrar, aplastarse con la voz
+  let sx=1+Math.sin(phase*2.2)*.012, sy=1-Math.sin(phase*2.2)*.012, bounce=Math.sin(phase*2.2)*3;
+  if(emo==='TALKING'){const v=.06+mic*.10;sx=1+Math.sin(phase*22)*v;sy=1-Math.sin(phase*22)*v;bounce=Math.sin(phase*11)*5;}
+  if(emo==='LISTENING'){sy=1.04;sx=.97;bounce=Math.sin(phase*3)*2;}
+  if(emo==='SURPRISED'){sx=1.1;sy=1.12;bounce=-8;}
+  if(emo==='ANGRY'){sx=1.03;sy=.94;bounce=Math.sin(phase*30)*2;}
+  if(emo==='SLEEPY'){sx=1.05;sy=.93;bounce=Math.sin(phase*1.2)*4+6;}
+  cur.sx=lerp(cur.sx,sx,k);cur.sy=lerp(cur.sy,sy,k);cur.bounce=lerp(cur.bounce,bounce,k);
+}
+
+// ---------- Dibujo: polígono relleno + dos "píldoras" (líneas gruesas con puntas redondas) ----------
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+function draw(){
+  const W=cv.width,H=cv.height,cx=W/2,cy=H/2+8+cur.bounce;
+  ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+  const a=cur.tilt*Math.PI/180;
+  const poly=(scale)=>{ctx.beginPath();for(let i=0;i<N;i++){const t=i/N*Math.PI*2,r=cur.radii[i]*R*scale;let x=Math.cos(t)*r*cur.sx,y=-Math.sin(t)*r*cur.sy;const xr=x*Math.cos(a)-y*Math.sin(a),yr=x*Math.sin(a)+y*Math.cos(a);i?ctx.lineTo(cx+xr,cy+yr):ctx.moveTo(cx+xr,cy+yr);}ctx.closePath();};
+  if(cur.ring>0.02){ctx.fillStyle=`rgba(91,91,99,${cur.ring})`;poly(1.04);ctx.fill();}
+  ctx.fillStyle=`rgb(${cur.color.map(Math.round).join(',')})`;poly(1);ctx.fill();
+  // ojos
+  const eh=cur.eyeH*R,ew=cur.eyeW*R,gap=cur.eyeGap*R;
+  const ox=cur.lookX*R*.16,oy=cur.lookY*R*.12-R*.06;
+  ctx.strokeStyle='#FFFFFF';ctx.lineCap='round';ctx.lineWidth=ew;
+  for(const s of[-1,1]){
+    const ex=cx+s*gap+ox,ey=cy+oy;
+    const rot=s*cur.eyeRot*Math.PI/180;              // enojo: se inclinan hacia el centro
+    const h=Math.max(eh,ew*.35)-ew;                  // largo del trazo (la punta redonda completa la píldora)
+    const dx=Math.sin(rot)*h/2,dy=Math.cos(rot)*h/2;
+    ctx.beginPath();ctx.moveTo(ex-dx,ey-dy);ctx.lineTo(ex+dx,ey+dy);ctx.stroke();
+  }
+}
+
+// ---------- UI ----------
+const $=(id)=>document.getElementById(id);
+const moodsEl=$('moods');
+for(const [key,m] of Object.entries(MOODS)){
+  const b=document.createElement('button');b.className='mood';b.dataset.key=key;
+  b.innerHTML=`<span class="sw" style="background:${m.color}"></span><span>${m.name}<small>${m.sub}</small></span>`;
+  b.onclick=()=>{forced=(forced===key)?null:key;syncMoods();};
+  moodsEl.appendChild(b);
+}
+function syncMoods(){for(const b of moodsEl.children){b.classList.toggle('on',b.dataset.key===emo);b.classList.toggle('pin',b.dataset.key===forced);}}
+const mic=$('mic'),jerk=$('jerk'),tilt=$('tilt');
+for(const [el,o] of [[mic,'mic-o'],[jerk,'jerk-o'],[tilt,'tilt-o']]) el.oninput=()=>{$(o).textContent=(+el.value).toFixed(2);};
+for(const el of [mic,jerk,tilt]) el.addEventListener('pointerdown',()=>{forced=null;});
+let pulse=null;
+$('talk').onclick=()=>{forced=null;const t0=performance.now();pulse=(now)=>{const t=(now-t0)/1000;if(t>3){pulse=null;mic.value=0;return;}mic.value=(.45+.4*Math.abs(Math.sin(t*9))*(.6+.4*Math.random())).toFixed(2);mic.oninput();};};
+$('shake').onclick=()=>{forced=null;jerk.value=.9;jerk.oninput();setTimeout(()=>{jerk.value=0;jerk.oninput();},150);};
+$('hit').onclick=()=>{forced=null;jerk.value=1.8;jerk.oninput();setTimeout(()=>{jerk.value=0;jerk.oninput();},150);};
+let auto=false,autoNext=0;const autoBtn=$('auto');
+autoBtn.onclick=()=>{auto=!auto;autoBtn.classList.toggle('on',auto);forced=null;autoNext=0;};
+const autoSeq=[()=>$('talk').onclick(),()=>$('shake').onclick(),()=>$('hit').onclick(),()=>{},()=>$('talk').onclick()];let autoI=0;
+
+let last=performance.now(),frames=0,fpsT=last;
+function loop(now){
+  let dt=(now-last)/1000;if(dt>.1)dt=.1;last=now;
+  if(pulse)pulse(now);
+  if(auto&&now>autoNext){autoSeq[autoI++%autoSeq.length]();autoNext=now+3200;}
+  update(dt,now,+mic.value,+jerk.value,+tilt.value);
+  draw();
+  $('st-emo').textContent=emo;$('st-mic').textContent=(+mic.value).toFixed(2);$('st-jerk').textContent=(+jerk.value).toFixed(2);
+  syncMoods();
+  frames++;if(now-fpsT>1000){$('fps').textContent=frames+' fps';frames=0;fpsT=now;}
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
