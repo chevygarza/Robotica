@@ -97,24 +97,45 @@ float petSizeScale() {
 }
 
 void petDrawHud(Arduino_GFX* g) {
+  // Pantalla completa estilo videojuego: titulo + 4 barras de vida segmentadas.
+  static const char* LABELS[(int)Need::COUNT] = { "HAMBRE", "ENERGIA", "DIVERSION", "AMOR" };
   const int n = (int)Need::COUNT;
-  const int barW = 70, barH = 12, gap = 14;
-  const int x0 = (LCD_WIDTH - (n * barW + (n - 1) * gap)) / 2;
-  const int y = LCD_HEIGHT - 58;
-  g->setTextSize(1);
+  const int segs = 10, segW = 28, segH = 30, segGap = 4;
+  const int barW = segs * segW + (segs - 1) * segGap;      // 316
+  const int x0 = (LCD_WIDTH - barW) / 2;
+  const uint16_t frame = rgb565(0x3A4150u), empty = rgb565(0x141820u), ink = rgb565(0xE8ECF2u);
+
+  g->fillScreen(rgb565(COL_BG));
+  g->drawRoundRect(6, 6, LCD_WIDTH - 12, LCD_HEIGHT - 12, 18, frame);
+  g->drawRoundRect(8, 8, LCD_WIDTH - 16, LCD_HEIGHT - 16, 16, frame);
+
+  g->setTextSize(4);
+  g->setTextColor(rgb565(0x2ECC71u));
+  g->setCursor(x0, 30);
+  g->print("BOB");
+  g->setTextSize(3);
+  g->setTextColor(ink);
+  g->setCursor(x0 + 96, 38);
+  g->printf("DIA %lu", (unsigned long)petAgeDays());
+
+  int y = 96;
   for (int i = 0; i < n; i++) {
-    int x = x0 + i * (barW + gap);
     float v = g_st.need[i] / 100.f;
     uint16_t c = v > 0.5f ? rgb565(0x2ECC71u) : (v > 0.2f ? rgb565(0xFFB020u) : rgb565(0xFF4040u));
-    g->drawRoundRect(x, y, barW, barH, 4, rgb565(0x55595Fu));
-    int fill = (int)((barW - 4) * v);
-    if (fill > 0) g->fillRoundRect(x + 2, y + 2, fill, barH - 4, 3, c);
-    g->setTextColor(rgb565(0xB8BEC6u));
-    g->setCursor(x, y + barH + 6);
-    g->print(NAMES[i]);
+    g->setTextSize(3);
+    g->setTextColor(ink);
+    g->setCursor(x0, y);
+    g->print(LABELS[i]);
+    g->setTextColor(c);
+    g->setCursor(x0 + barW - 3 * 18, y);
+    g->printf("%3d", (int)(g_st.need[i] + .5f));
+    int lit = (int)(v * segs + .5f);
+    int by = y + 32;
+    for (int s = 0; s < segs; s++) {
+      int sx = x0 + s * (segW + segGap);
+      if (s < lit) g->fillRoundRect(sx, by, segW, segH, 5, c);
+      else { g->fillRoundRect(sx, by, segW, segH, 5, empty); g->drawRoundRect(sx, by, segW, segH, 5, frame); }
+    }
+    y += 84;
   }
-  g->setTextSize(2);
-  g->setTextColor(rgb565(0x8A9099u));
-  g->setCursor(x0, y - 26);
-  g->printf("Dia %lu", (unsigned long)petAgeDays());
 }

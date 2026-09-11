@@ -25,7 +25,8 @@ Arduino_DataBus *bus = new Arduino_ESP32QSPI(PIN_LCD_CS, PIN_LCD_SCLK,
 Arduino_CO5300 *panel = new Arduino_CO5300(bus, GFX_NOT_DEFINED /* RST via expansor */,
                                            0 /* rotation */, LCD_WIDTH, LCD_HEIGHT,
                                            LCD_COL_OFFSET, 0, 0, 0);
-Arduino_Canvas *gfx = new Arduino_Canvas(LCD_WIDTH, LCD_HEIGHT, panel);
+// Rotacion 2 (180 grados) en el canvas: el "arriba" de Jose es el contrario al del panel.
+Arduino_Canvas *gfx = new Arduino_Canvas(LCD_WIDTH, LCD_HEIGHT, panel, 0, 0, 2);
 
 static Emotion lastPrinted = Emotion::Idle;
 static uint32_t lastPrintMs = 0, lastLoopMs = 0, lastRtcMs = 0, nowUnix = 0;
@@ -113,8 +114,7 @@ void loop() {
   faceSetVitality(petVitality());
   faceSetScale(petSizeScale());
 
-  faceDraw();
-  if (hudOn) petDrawHud(gfx);
+  if (hudOn) petDrawHud(gfx); else faceDraw();
   gfx->flush();
 
   Emotion e = faceEmotion();

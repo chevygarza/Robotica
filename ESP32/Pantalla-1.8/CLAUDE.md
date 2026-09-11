@@ -61,7 +61,9 @@ tools/.venv/bin/python tools/monitor.py /dev/cu.usbmodemXXX [seg]   # serial SIN
   - Tamagotchi (`pet.cpp`): hambre/sueno/diversion/carino bajan con hora real
     (RTC `rtc.cpp`), memoria en NVS (`Preferences`, namespace `bob`). Cuidados
     por tactil (`touch.cpp`, CST816 0x15): tap mimo, doble tap comer, deslizar
-    cosquillas, mantener = barras; sacudir = jugar; boca abajo = dormir.
+    cosquillas, mantener = HUD videojuego (barras segmentadas); sacudir = jugar;
+    boca abajo = dormir. Canvas con rotacion 2: el "arriba" de Jose es el
+    contrario al del panel (USB abajo).
   - Vida propia (`face.cpp`, "director"): 12 actos autonomos (estirarse, brincar,
     pasear, rodar, guinar, curiosear, reirse, sonar, siesta, esconderse, temblar,
     bailar) elegidos por peso cuando nadie lo estimula; la vitalidad los modula.
