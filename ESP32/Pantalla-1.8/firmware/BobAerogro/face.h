@@ -10,7 +10,14 @@ enum class Emotion : uint8_t { Idle = 0, Listening, Talking, Surprised, Angry, S
 
 const char* emotionName(Emotion e);
 
+// Reacciones cortas a cuidados del tamagotchi (no cambian el animo/color)
+enum class FaceAction : uint8_t { None = 0, Caress, Eat, Tickle };
+
 void faceBegin(Arduino_GFX* gfx);
+void faceSetVitality(float v);          // 0..1: color vivo -> apagado/gris
+void faceSetScale(float s);             // tamano del cuerpo (edad)
+void faceAction(FaceAction a);          // dispara un gesto de ~1 s
+void faceForce(Emotion e, uint32_t ms); // fuerza un animo (ej. dormido boca abajo)
 void faceUpdate(const ImuSample& imu, float micEnergy, uint32_t nowMs);
 void faceDraw();
 Emotion faceEmotion();

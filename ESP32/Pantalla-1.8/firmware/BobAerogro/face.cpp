@@ -6,6 +6,7 @@
 static const int   N = 72;
 static const float R = 118.f;
 static const float DEG = 3.14159265f / 180.f;
+static const float TAU = 6.2831853f;
 
 struct Mood {
   uint32_t color;
@@ -48,42 +49,94 @@ const char* emotionName(Emotion e) {
   }
 }
 
+// ---- conducta autonoma: lo que Bob hace solo cuando nadie lo molesta ----
+enum class Beh : uint8_t { None = 0, Stretch, Hop, Wander, Roll, Wink, Curious, Giggle, Daydream, Nap, Peekaboo, Shiver, Dance, COUNT };
+static const char* BEH_NAMES[] = { "-", "estirarse", "brincar", "pasear", "rodar", "guinar", "curiosear", "reirse", "sonar", "siesta", "esconderse", "temblar", "bailar" };
+
 // ---- estado animado ----
 static Arduino_GFX* g = nullptr;
 static Emotion g_emo = Emotion::Idle;
 static float g_radii[N];
 static float g_col[3];
 static float g_tilt, g_eyeH, g_eyeW, g_eyeGap, g_eyeRot, g_ring, g_bounce, g_sx = 1, g_sy = 1, g_lookX, g_lookY;
-static float g_phase = 0.f, g_micLast = 0.f;
+static float g_posX = 0, g_eyeL = 1, g_eyeR = 1, g_animScale = 1;
+static float g_phase = 0.f;
 static uint32_t g_holdUntil = 0, g_lastMotionMs = 0, g_nextBlink = 0, g_blinkUntil = 0, g_lookUntil = 0;
 static float g_lookTx = 0, g_lookTy = 0;
+static float g_vitality = 1.f, g_scale = 1.f;
+static FaceAction g_action = FaceAction::None;
+static uint32_t g_actionUntil = 0, g_forceUntil = 0, g_lastStimulusMs = 0;
+static Emotion g_forced = Emotion::Idle;
+static Beh g_beh = Beh::None;
+static uint32_t g_behStart = 0, g_behUntil = 0, g_nextBeh = 0;
+static float g_behA = 0, g_behB = 0;     // parametros del acto en curso (destino de paseo, etc.)
+static bool g_napping = false;
 
 static float lerpf(float a, float b, float k) { return a + (b - a) * k; }
 static float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
 static float frand() { return (esp_random() % 10000) / 10000.f; }
 
-Emotion faceEmotion() { return g_emo; }
+void faceSetVitality(float v) { g_vitality = clampf(v, 0.f, 1.f); }
+void faceSetScale(float s) { g_scale = s; }
+void faceAction(FaceAction a) { g_action = a; g_actionUntil = millis() + (a == FaceAction::Eat ? 1200 : 700); g_beh = Beh::None; g_lastStimulusMs = millis(); }
+void faceForce(Emotion e, uint32_t ms) { g_forced = e; g_forceUntil = millis() + ms; }
+Emotion faceEmotion() { return g_napping ? Emotion::Sleepy : g_emo; }
 
 void faceBegin(Arduino_GFX* gfx) {
   g = gfx;
   const Mood& M = MOODS[0];
-  for (int i = 0; i < N; i++) g_radii[i] = M.shape(i / (float)N * 6.2831853f);
+  for (int i = 0; i < N; i++) g_radii[i] = M.shape(i / (float)N * TAU);
   g_col[0] = (M.color >> 16) & 0xFF; g_col[1] = (M.color >> 8) & 0xFF; g_col[2] = M.color & 0xFF;
   g_tilt = M.tilt; g_eyeH = M.eyeH; g_eyeW = M.eyeW; g_eyeGap = M.eyeGap; g_eyeRot = M.eyeRot; g_ring = 0;
-  g_lastMotionMs = millis();
+  g_lastMotionMs = millis(); g_lastStimulusMs = millis();
   g_nextBlink = millis() + 1800;
+  g_nextBeh = millis() + 2500;
 }
 
 static Emotion pickEmotion(const ImuSample& imu, float mic, uint32_t now) {
   if (imu.jerk > 0.08f) g_lastMotionMs = now;
+  if (now < g_forceUntil) return g_forced;
   if (now < g_holdUntil) return g_emo;
   Emotion next = Emotion::Idle;
-  if (mic > 0.55f)       { next = Emotion::Talking;   g_holdUntil = now + 400; }
-  else if (mic > 0.22f)  { next = Emotion::Listening; g_holdUntil = now + 250; }
-  else if (imu.jerk > 1.4f) { next = Emotion::Angry;  g_holdUntil = now + 700; }
+  if (mic > 0.55f)          { next = Emotion::Talking;   g_holdUntil = now + 400; }
+  else if (mic > 0.22f)     { next = Emotion::Listening; g_holdUntil = now + 250; }
+  else if (imu.jerk > 1.4f) { next = Emotion::Angry;     g_holdUntil = now + 700; }
   else if (imu.jerk > 0.55f){ next = Emotion::Surprised; g_holdUntil = now + 500; }
-  else if (now - g_lastMotionMs > 20000) next = Emotion::Sleepy;
+  else if (now - g_lastMotionMs > 20000 && now - g_lastStimulusMs > 20000) next = Emotion::Sleepy;
+  if (next != Emotion::Idle && next != Emotion::Sleepy) g_lastStimulusMs = now;
   return next;
+}
+
+// Elige que hacer. Con mas vitalidad hace mas y mas seguido.
+static void chooseBehavior(uint32_t now) {
+  struct { Beh b; float w; uint32_t ms; } table[] = {
+    { Beh::Stretch,  1.0f, 1500 }, { Beh::Hop,      1.2f, 1300 }, { Beh::Wander,   1.4f, 2200 },
+    { Beh::Roll,     0.7f, 1800 }, { Beh::Wink,     1.0f,  450 }, { Beh::Curious,  1.0f, 2500 },
+    { Beh::Giggle,   0.8f, 1600 }, { Beh::Daydream, 1.0f, 3500 }, { Beh::Nap,      0.5f, 5000 },
+    { Beh::Peekaboo, 0.6f, 1600 }, { Beh::Shiver,   0.5f,  800 }, { Beh::Dance,    0.5f, 3600 },
+  };
+  const int n = sizeof(table) / sizeof(table[0]);
+  float total = 0;
+  for (int i = 0; i < n; i++) {
+    float w = table[i].w;
+    if (g_vitality < .6f && (table[i].b == Beh::Dance || table[i].b == Beh::Hop || table[i].b == Beh::Giggle)) w *= .3f;
+    if (g_vitality < .6f && table[i].b == Beh::Nap) w *= 2.f;
+    total += w;
+  }
+  float r = frand() * total;
+  int pick = 0;
+  for (int i = 0; i < n; i++) {
+    float w = table[i].w;
+    if (g_vitality < .6f && (table[i].b == Beh::Dance || table[i].b == Beh::Hop || table[i].b == Beh::Giggle)) w *= .3f;
+    if (g_vitality < .6f && table[i].b == Beh::Nap) w *= 2.f;
+    if (r < w) { pick = i; break; }
+    r -= w;
+  }
+  g_beh = table[pick].b;
+  g_behStart = now; g_behUntil = now + table[pick].ms;
+  g_behA = frand() * 2 - 1; g_behB = frand();
+  if (g_beh == Beh::Wander) g_behA = clampf(g_posX / 70.f + (frand() * 2 - 1) * 1.2f, -1.f, 1.f);
+  Serial.printf("[bob] hace: %s\n", BEH_NAMES[(int)g_beh]);
 }
 
 void faceUpdate(const ImuSample& imu, float mic, uint32_t now) {
@@ -91,29 +144,47 @@ void faceUpdate(const ImuSample& imu, float mic, uint32_t now) {
   float dt = last ? (now - last) / 1000.f : 0.016f;
   if (dt > 0.1f) dt = 0.1f;
   last = now;
-  g_micLast = mic;
 
   Emotion e = pickEmotion(imu, mic, now);
-  if (e != g_emo) { g_emo = e; Serial.printf("[bob] %s\n", emotionName(e)); }
-  const Mood& M = MOODS[(int)g_emo];
+  if (e != g_emo) { g_emo = e; Serial.printf("[bob] %s\n", emotionName(e)); if (e != Emotion::Idle) g_beh = Beh::None; }
   g_phase += dt;
   const float k = clampf(dt * 8.f, 0.05f, 0.45f);
 
-  for (int i = 0; i < N; i++) g_radii[i] = lerpf(g_radii[i], M.shape(i / (float)N * 6.2831853f), k);
+  // ---- director: solo actua tranquilo (Idle) y sin gesto de cuidado en curso ----
+  bool calm = (g_emo == Emotion::Idle) && (g_action == FaceAction::None || now >= g_actionUntil);
+  if (g_beh != Beh::None && now >= g_behUntil) {
+    g_beh = Beh::None; g_napping = false;
+    float rest = 2500 + frand() * 5000 * (1.6f - g_vitality);   // con mas vida, menos espera
+    g_nextBeh = now + (uint32_t)rest;
+  }
+  if (calm && g_beh == Beh::None && now >= g_nextBeh) chooseBehavior(now);
+  float bt = g_beh != Beh::None ? clampf((now - g_behStart) / (float)(g_behUntil - g_behStart), 0.f, 1.f) : 0.f;
+
+  // animo visible: el real, o el que pide el acto en curso
+  const Mood* V = &MOODS[(int)g_emo];
+  if (g_beh == Beh::Curious) V = &MOODS[(int)Emotion::Listening];
+  if (g_beh == Beh::Giggle)  V = &MOODS[(int)Emotion::Talking];
+  if (g_beh == Beh::Nap)     { V = &MOODS[(int)Emotion::Sleepy]; g_napping = bt > .15f && bt < .85f; }
+  if (g_beh == Beh::Dance)   V = &MOODS[(int)((uint32_t)(bt * 12) % (int)Emotion::COUNT)];   // pasa por todos
+  const Mood& M = *V;
+
+  float kk = (g_beh == Beh::Dance) ? clampf(dt * 16.f, 0.1f, 0.7f) : k;
+  for (int i = 0; i < N; i++) g_radii[i] = lerpf(g_radii[i], M.shape(i / (float)N * TAU), kk);
   float tc[3] = { (float)((M.color >> 16) & 0xFF), (float)((M.color >> 8) & 0xFF), (float)(M.color & 0xFF) };
-  for (int i = 0; i < 3; i++) g_col[i] = lerpf(g_col[i], tc[i], k);
-  g_tilt = lerpf(g_tilt, M.tilt, k);
+  float grey = (tc[0] * .3f + tc[1] * .59f + tc[2] * .11f);
+  for (int i = 0; i < 3; i++) {
+    float c = lerpf(grey, tc[i], g_vitality) * (0.45f + 0.55f * g_vitality);  // desatura y apaga
+    g_col[i] = lerpf(g_col[i], c, kk);
+  }
   g_ring = lerpf(g_ring, M.ring ? 1.f : 0.f, k);
 
   // ojos + parpadeo
-  float eyeH = M.eyeH;
-  if (g_emo != Emotion::Sleepy) {
+  float eyeH = M.eyeH, eyeL = 1, eyeR = 1;
+  if (g_emo != Emotion::Sleepy && g_beh != Beh::Nap) {
     if (now >= g_nextBlink && !g_blinkUntil) { g_blinkUntil = now + 110; g_nextBlink = now + 1600 + esp_random() % 2500; }
     if (g_blinkUntil && now < g_blinkUntil) eyeH = .04f;
     else if (g_blinkUntil && now >= g_blinkUntil) g_blinkUntil = 0;
   }
-  g_eyeH = lerpf(g_eyeH, eyeH, clampf(dt * 14.f, 0.05f, 0.6f));
-  g_eyeW = lerpf(g_eyeW, M.eyeW, k); g_eyeGap = lerpf(g_eyeGap, M.eyeGap, k); g_eyeRot = lerpf(g_eyeRot, M.eyeRot, k);
 
   // mirada: la inclinacion manda; si esta plano, mira alrededor de vez en cuando
   float tilt = clampf(imu.ax * 1.4f, -1.f, 1.f);
@@ -126,10 +197,10 @@ void faceUpdate(const ImuSample& imu, float mic, uint32_t now) {
     lx = g_lookTx; ly = g_lookTy;
   }
   if (g_emo == Emotion::Sleepy) { lx = 0; ly = .3f; }
-  g_lookX = lerpf(g_lookX, lx, k); g_lookY = lerpf(g_lookY, ly, k);
 
   // cuerpo: respirar, rebotar, vibrar, aplastarse con la voz
   float sx = 1 + sinf(g_phase * 2.2f) * .012f, sy = 1 - sinf(g_phase * 2.2f) * .012f, bounce = sinf(g_phase * 2.2f) * 3;
+  float tiltT = M.tilt, posX = g_posX, animScale = 1;
   switch (g_emo) {
     case Emotion::Talking:   { float v = .06f + mic * .10f; sx = 1 + sinf(g_phase * 22) * v; sy = 1 - sinf(g_phase * 22) * v; bounce = sinf(g_phase * 11) * 5; } break;
     case Emotion::Listening: sy = 1.04f; sx = .97f; bounce = sinf(g_phase * 3) * 2; break;
@@ -138,6 +209,43 @@ void faceUpdate(const ImuSample& imu, float mic, uint32_t now) {
     case Emotion::Sleepy:    sx = 1.05f; sy = .93f; bounce = sinf(g_phase * 1.2f) * 4 + 6; break;
     default: break;
   }
+  if (g_emo != Emotion::Idle) posX = 0;   // los sustos lo devuelven al centro
+
+  // ---- actos autonomos ----
+  const float bell = sinf(bt * 3.14159f);          // 0 -> 1 -> 0 a lo largo del acto
+  switch (g_beh) {
+    case Beh::Stretch:  sy = 1 + .18f * bell; sx = 1 - .10f * bell; eyeH = bell > .5f ? .05f : eyeH; bounce = -10 * bell; break;
+    case Beh::Hop:      { float h = fabsf(sinf(bt * 3.14159f * 3)); bounce = -32 * h; sy = 1 + .10f * h - .12f * (h < .08f); sx = 1 - .06f * h + .10f * (h < .08f); } break;
+    case Beh::Wander:   posX = lerpf(g_posX, g_behA * 70, .04f); tiltT += (g_behA * 70 - g_posX) * .25f; bounce = sinf(g_phase * 14) * 4; break;
+    case Beh::Roll:     tiltT += bt * 360 * (g_behA < 0 ? -1 : 1); posX = g_behA * 40 * bell; bounce = 4 * bell; break;
+    case Beh::Wink:     if (g_behA < 0) eyeL = .12f; else eyeR = .12f; sx = 1.03f; break;
+    case Beh::Curious:  lx = g_behA; ly = -.4f + g_behB * .3f; tiltT += g_behA * 8; sy = 1.05f; break;
+    case Beh::Giggle:   sx = 1 + sinf(g_phase * 26) * .06f; sy = 1 - sinf(g_phase * 26) * .05f; bounce = sinf(g_phase * 13) * 5; eyeH *= .5f; break;
+    case Beh::Daydream: lx = .6f; ly = -.7f; sy = 1 + sinf(g_phase * 1.1f) * .02f; tiltT += 6; eyeH *= .8f; break;
+    case Beh::Nap:      eyeH = (g_napping ? .05f : .2f); sx = 1.05f; sy = .93f; bounce = sinf(g_phase * 1.2f) * 4 + 6; break;
+    case Beh::Peekaboo: animScale = bt < .5f ? 1 - .75f * clampf(bt / .35f, 0, 1) : .25f + .75f * clampf((bt - .5f) / .3f, 0, 1); eyeH = bt < .5f ? .05f : .42f; bounce = bt > .5f ? -8 : 0; break;
+    case Beh::Shiver:   sx = 1 + sinf(g_phase * 50) * .04f; posX = g_posX + sinf(g_phase * 50) * 3; eyeH *= .7f; break;
+    case Beh::Dance:    bounce = -14 * fabsf(sinf(g_phase * 8)); tiltT += sinf(g_phase * 4) * 18; sx = 1 + sinf(g_phase * 8) * .08f; sy = 1 - sinf(g_phase * 8) * .08f; posX = sinf(g_phase * 2) * 40; break;
+    default: break;
+  }
+
+  // gestos de cuidado (mandan sobre lo autonomo)
+  if (g_action != FaceAction::None && now < g_actionUntil) {
+    switch (g_action) {
+      case FaceAction::Caress: eyeH *= .45f; bounce = -6 + sinf(g_phase * 12) * 3; sx = 1.06f; sy = .96f; break;
+      case FaceAction::Eat:    { float ch = sinf(g_phase * 16); sy = 1 + ch * .07f; sx = 1 - ch * .05f; bounce = ch * 3; } break;
+      case FaceAction::Tickle: sx = 1 + sinf(g_phase * 40) * .05f; sy = 1 - sinf(g_phase * 40) * .04f; bounce = sinf(g_phase * 20) * 6; eyeH *= .6f; break;
+      default: break;
+    }
+  } else g_action = FaceAction::None;
+
+  g_eyeH = lerpf(g_eyeH, eyeH, clampf(dt * 14.f, 0.05f, 0.6f));
+  g_eyeL = lerpf(g_eyeL, eyeL, .5f); g_eyeR = lerpf(g_eyeR, eyeR, .5f);
+  g_eyeW = lerpf(g_eyeW, M.eyeW, k); g_eyeGap = lerpf(g_eyeGap, M.eyeGap, k); g_eyeRot = lerpf(g_eyeRot, M.eyeRot, k);
+  g_lookX = lerpf(g_lookX, lx, k); g_lookY = lerpf(g_lookY, ly, k);
+  g_tilt = (g_beh == Beh::Roll) ? tiltT : lerpf(g_tilt, tiltT, k);
+  g_posX = lerpf(g_posX, posX, (g_beh == Beh::Wander || g_beh == Beh::Shiver) ? 1.f : k);
+  g_animScale = lerpf(g_animScale, animScale, .5f);
   g_sx = lerpf(g_sx, sx, k); g_sy = lerpf(g_sy, sy, k); g_bounce = lerpf(g_bounce, bounce, k);
 }
 
@@ -173,7 +281,7 @@ static void fillPolygon(const float* px, const float* py, int n, uint16_t color)
 static void bodyPolygon(float scale, float cx, float cy, float* px, float* py) {
   float a = g_tilt * DEG, ca = cosf(a), sa = sinf(a);
   for (int i = 0; i < N; i++) {
-    float t = i / (float)N * 6.2831853f, r = g_radii[i] * R * scale;
+    float t = i / (float)N * TAU, r = g_radii[i] * R * scale * g_scale * g_animScale;
     float x = cosf(t) * r * g_sx, y = -sinf(t) * r * g_sy;
     px[i] = cx + x * ca - y * sa;
     py[i] = cy + x * sa + y * ca;
@@ -193,7 +301,7 @@ static void capsule(float x0, float y0, float x1, float y1, float w, uint16_t c)
 void faceDraw() {
   if (!g) return;
   static float px[N], py[N];
-  const float cx = LCD_WIDTH / 2.f, cy = LCD_HEIGHT / 2.f + 8 + g_bounce;
+  const float cx = LCD_WIDTH / 2.f + g_posX, cy = LCD_HEIGHT / 2.f + 8 + g_bounce;
 
   g->fillScreen(rgb565(COL_BG));
   if (g_ring > .02f) {
@@ -208,14 +316,17 @@ void faceDraw() {
   bodyPolygon(1.f, cx, cy, px, py);
   fillPolygon(px, py, N, rgb565(col));
 
-  // ojos
-  float eh = g_eyeH * R, ew = g_eyeW * R, gap = g_eyeGap * R;
-  float ox = g_lookX * R * .16f, oy = g_lookY * R * .12f - R * .06f;
+  // ojos: giran con el cuerpo (rodar) y cada uno puede cerrarse solo (guino)
+  const float Rs = R * g_scale * g_animScale;
+  float eh = g_eyeH * Rs, ew = g_eyeW * Rs, gap = g_eyeGap * Rs;
+  float ox = g_lookX * Rs * .16f, oy = g_lookY * Rs * .12f - Rs * .06f;
+  float ba = g_tilt * DEG, ca = cosf(ba), sa = sinf(ba);
   uint16_t white = rgb565(COL_WHITE);
   for (int s = -1; s <= 1; s += 2) {
-    float ex = cx + s * gap + ox, ey = cy + oy;
-    float rot = s * g_eyeRot * DEG;
-    float h = fmaxf(eh, ew * .35f) - ew;
+    float lx = s * gap + ox, ly = oy;
+    float ex = cx + lx * ca - ly * sa, ey = cy + lx * sa + ly * ca;
+    float rot = ba + s * g_eyeRot * DEG;
+    float h = fmaxf(eh * (s < 0 ? g_eyeL : g_eyeR), ew * .35f) - ew;
     float dx = sinf(rot) * h / 2, dy = cosf(rot) * h / 2;
     capsule(ex - dx, ey - dy, ex + dx, ey + dy, ew, white);
   }

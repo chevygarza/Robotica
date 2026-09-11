@@ -58,6 +58,13 @@ tools/.venv/bin/python tools/monitor.py /dev/cu.usbmodemXXX [seg]   # serial SIN
   Maqueta de referencia (misma geometria): https://claude.ai/code/artifact/7ad4c6df-9f44-403a-b180-5e0909e5d1cc
   Dibuja en `Arduino_Canvas` (PSRAM) y hace `flush()` por cuadro. Mic ES8311
   en tarea del core 0. **Validado en vivo 2026-09-10** (cara, IMU y voz).
+  - Tamagotchi (`pet.cpp`): hambre/sueno/diversion/carino bajan con hora real
+    (RTC `rtc.cpp`), memoria en NVS (`Preferences`, namespace `bob`). Cuidados
+    por tactil (`touch.cpp`, CST816 0x15): tap mimo, doble tap comer, deslizar
+    cosquillas, mantener = barras; sacudir = jugar; boca abajo = dormir.
+  - Vida propia (`face.cpp`, "director"): 12 actos autonomos (estirarse, brincar,
+    pasear, rodar, guinar, curiosear, reirse, sonar, siesta, esconderse, temblar,
+    bailar) elegidos por peso cuando nadie lo estimula; la vitalidad los modula.
 - `firmware/HelloWorld`: 01_HelloWorld oficial + secuencia del expansor. Prueba base.
 
 ## Gotchas
@@ -71,4 +78,5 @@ tools/.venv/bin/python tools/monitor.py /dev/cu.usbmodemXXX [seg]   # serial SIN
 ## Pendiente
 - [x] Mic ES8311 por I2S en tarea core 0 (`mic.cpp`, driver oficial `es8311.c`). Validado en vivo.
 - [ ] Leer giroscopio del QMI8658 (hoy solo acelerometro)
-- [ ] Tactil (CST816/FT3168) si hace falta
+- [ ] Puente con la Mac (hitos de Claude Code -> animo de Bob)
+- [ ] Al arrancar el primer jerk del IMU dispara ANGRY un instante (cosmetico)
