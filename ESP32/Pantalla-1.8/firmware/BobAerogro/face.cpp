@@ -80,6 +80,26 @@ void faceSetVitality(float v) { g_vitality = clampf(v, 0.f, 1.f); }
 void faceSetScale(float s) { g_scale = s; }
 void faceAction(FaceAction a) { g_action = a; g_actionUntil = millis() + (a == FaceAction::Eat ? 1200 : 700); g_beh = Beh::None; g_lastStimulusMs = millis(); }
 void faceForce(Emotion e, uint32_t ms) { g_forced = e; g_forceUntil = millis() + ms; }
+
+static char g_say[64] = "";
+static uint32_t g_sayUntil = 0, g_focusUntil = 0;
+static void startBehavior(Beh b, uint32_t ms) {
+  g_beh = b; g_behStart = millis(); g_behUntil = g_behStart + ms;
+  g_behA = frand() * 2 - 1; g_behB = frand();
+  g_lastStimulusMs = millis();
+}
+void faceDo(FaceMove m) {
+  g_action = FaceAction::None; g_forceUntil = 0;
+  switch (m) {
+    case FaceMove::Hop:      startBehavior(Beh::Hop, 1300); break;
+    case FaceMove::Dance:    startBehavior(Beh::Dance, 3600); break;
+    case FaceMove::Wink:     startBehavior(Beh::Wink, 500); break;
+    case FaceMove::Curious:  startBehavior(Beh::Curious, 2500); break;
+    case FaceMove::Peekaboo: startBehavior(Beh::Peekaboo, 1600); break;
+  }
+}
+void faceSay(const char* text, uint32_t ms) { strncpy(g_say, text, sizeof(g_say) - 1); g_say[sizeof(g_say) - 1] = 0; g_sayUntil = millis() + ms; }
+void faceFocus(uint32_t ms) { g_focusUntil = millis() + ms; g_lastStimulusMs = millis(); if (g_beh != Beh::None && g_beh != Beh::Dance) g_beh = Beh::None; }
 Emotion faceEmotion() { return g_napping ? Emotion::Sleepy : g_emo; }
 
 void faceBegin(Arduino_GFX* gfx) {
@@ -151,7 +171,8 @@ void faceUpdate(const ImuSample& imu, float mic, uint32_t now) {
   const float k = clampf(dt * 8.f, 0.05f, 0.45f);
 
   // ---- director: solo actua tranquilo (Idle) y sin gesto de cuidado en curso ----
-  bool calm = (g_emo == Emotion::Idle) && (g_action == FaceAction::None || now >= g_actionUntil);
+  bool focused = now < g_focusUntil;
+  bool calm = !focused && (g_emo == Emotion::Idle) && (g_action == FaceAction::None || now >= g_actionUntil);
   if (g_beh != Beh::None && now >= g_behUntil) {
     g_beh = Beh::None; g_napping = false;
     float rest = 2500 + frand() * 5000 * (1.6f - g_vitality);   // con mas vida, menos espera
@@ -162,6 +183,7 @@ void faceUpdate(const ImuSample& imu, float mic, uint32_t now) {
 
   // animo visible: el real, o el que pide el acto en curso
   const Mood* V = &MOODS[(int)g_emo];
+  if (focused && g_emo == Emotion::Idle && g_beh == Beh::None) V = &MOODS[(int)Emotion::Listening];
   if (g_beh == Beh::Curious) V = &MOODS[(int)Emotion::Listening];
   if (g_beh == Beh::Giggle)  V = &MOODS[(int)Emotion::Talking];
   if (g_beh == Beh::Nap)     { V = &MOODS[(int)Emotion::Sleepy]; g_napping = bt > .15f && bt < .85f; }
@@ -330,4 +352,28 @@ void faceDraw() {
     float dx = sinf(rot) * h / 2, dy = cosf(rot) * h / 2;
     capsule(ex - dx, ey - dy, ex + dx, ey + dy, ew, white);
   }
+
+  // globo de texto (hasta 2 lineas de 26 caracteres, fuente x2)
+  if (g_say[0] && millis() < g_sayUntil) {
+    const int cw = 12, maxc = 26, pad = 14;
+    char l1[maxc + 1] = "", l2[maxc + 1] = "";
+    int len = strlen(g_say);
+    if (len <= maxc) strncpy(l1, g_say, maxc);
+    else {
+      int cut = maxc;
+      for (int i = maxc; i > 8; i--) if (g_say[i] == ' ') { cut = i; break; }
+      strncpy(l1, g_say, cut); l1[cut] = 0;
+      const char* rest = g_say + cut; while (*rest == ' ') rest++;
+      strncpy(l2, rest, maxc);
+    }
+    int lines = l2[0] ? 2 : 1;
+    int w = (int)fmaxf(strlen(l1), strlen(l2)) * cw + pad * 2, h = lines * 20 + pad * 2 - 4;
+    int bx = (LCD_WIDTH - w) / 2, by = 22;
+    g->fillRoundRect(bx, by, w, h, 14, rgb565(0xFFFFFFu));
+    g->fillTriangle(LCD_WIDTH / 2 - 10, by + h - 1, LCD_WIDTH / 2 + 10, by + h - 1, LCD_WIDTH / 2, by + h + 12, rgb565(0xFFFFFFu));
+    g->setTextSize(2);
+    g->setTextColor(rgb565(0x1B1F26u));
+    g->setCursor(bx + pad, by + pad - 2); g->print(l1);
+    if (l2[0]) { g->setCursor(bx + pad, by + pad + 18); g->print(l2); }
+  } else if (g_say[0] && millis() >= g_sayUntil) g_say[0] = 0;
 }

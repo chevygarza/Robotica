@@ -1,0 +1,13 @@
+#!/bin/sh
+# Cliente del puente: manda un evento a Bob via bobd.
+#   bob hello | working | done | notify | error | bye
+#   bob say "Texto corto"
+SOCK=/tmp/bob-aerogro.sock
+[ -S "$SOCK" ] || exit 0          # sin demonio: silencio (los hooks no deben fallar)
+case "$1" in
+  say) shift; MSG="SAY $*" ;;
+  ping) MSG="PING" ;;
+  *) MSG="EV $1" ;;
+esac
+printf '%s\n' "$MSG" | nc -U -w 1 "$SOCK" >/dev/null 2>&1
+exit 0

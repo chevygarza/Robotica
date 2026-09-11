@@ -69,6 +69,18 @@ tools/.venv/bin/python tools/monitor.py /dev/cu.usbmodemXXX [seg]   # serial SIN
     bailar) elegidos por peso cuando nadie lo estimula; la vitalidad los modula.
 - `firmware/HelloWorld`: 01_HelloWorld oficial + secuencia del expansor. Prueba base.
 
+## Puente con la Mac (`tools/bridge/`)
+- `bobd.py`: demonio que mantiene el USB abierto (abrir el puerto en macOS
+  RESETEA el chip, por eso se abre una sola vez) y recibe eventos por
+  `/tmp/bob-aerogro.sock`. Log del serial: `~/Library/Logs/bob-aerogro.log`.
+- `bob <evento>`: cliente. `hello|working|done|notify|error|bye`, `say "texto"`.
+- Corre por launchd: `~/Library/LaunchAgents/com.jose.bob-aerogro.plist`
+  (plantilla en `tools/bridge/`, hay que sustituir `__REPO__`/`__HOME__`).
+- Hooks de Claude Code en `~/.claude/settings.json`: SessionStart->hello,
+  UserPromptSubmit->working, Stop->done, Notification->notify, SessionEnd->bye.
+- `tools/build.sh flash` le pide a bobd que suelte el puerto (`__pause__`) y
+  bobd lo reabre solo. `tools/monitor.py` NO sirve con bobd corriendo: leer el log.
+
 ## Gotchas
 1. Serial: **nunca** abrir con DTR/RTS (`dtr=False, rts=False` antes de `open()`).
    Abrir el puerto en macOS resetea el chip igual (`USB_UART_CHIP_RESET`), es normal.
@@ -80,5 +92,4 @@ tools/.venv/bin/python tools/monitor.py /dev/cu.usbmodemXXX [seg]   # serial SIN
 ## Pendiente
 - [x] Mic ES8311 por I2S en tarea core 0 (`mic.cpp`, driver oficial `es8311.c`). Validado en vivo.
 - [ ] Leer giroscopio del QMI8658 (hoy solo acelerometro)
-- [ ] Puente con la Mac (hitos de Claude Code -> animo de Bob)
-- [ ] Al arrancar el primer jerk del IMU dispara ANGRY un instante (cosmetico)
+- [ ] Hitos "del mundo Claude" por Wi-Fi (versiones nuevas, anuncios) -> `bob say`

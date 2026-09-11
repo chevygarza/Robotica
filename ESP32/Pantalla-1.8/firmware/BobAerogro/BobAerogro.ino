@@ -16,6 +16,7 @@
 #include "touch.h"
 #include "rtc.h"
 #include "pet.h"
+#include "bridge.h"
 
 Adafruit_XCA9554 expander;
 
@@ -85,6 +86,7 @@ void loop() {
   if (now - lastRtcMs > 10000) { lastRtcMs = now; uint32_t u = rtcNow(); if (u) nowUnix = u; }
 
   ImuSample imu = imuRead();
+  if (now < 800) { imu.jerk = 0; imu.ok = false; }   // primera lectura del IMU es basura: no cuenta
   float energy = micEnergy();
 
   // Cuidados por tactil
@@ -99,6 +101,19 @@ void loop() {
     case TouchEvent::HoldEnd:   hudOn = false; break;
     default: break;
   }
+  // Eventos de la Mac (hooks de Claude Code via bobd)
+  BridgeMsg bm = bridgePoll();
+  switch (bm.ev) {
+    case BridgeEvent::Hello:   faceDo(FaceMove::Hop); faceSay("Hola Jose!", 3000); break;
+    case BridgeEvent::Working: faceFocus(12000); break;                       // se renueva con cada evento
+    case BridgeEvent::Done:    faceDo(FaceMove::Dance); petAction(PetAction::Tickle); break;
+    case BridgeEvent::Notify:  faceForce(Emotion::Surprised, 4000); faceSay("Te necesito!", 4000); break;
+    case BridgeEvent::Error:   faceForce(Emotion::Angry, 1500); break;
+    case BridgeEvent::Bye:     faceDo(FaceMove::Wink); faceSay("Bye!", 2000); break;
+    case BridgeEvent::Say:     faceDo(FaceMove::Curious); faceSay(bm.text, 5000); break;
+    default: break;
+  }
+
   // Sacudida = jugar (una vez por sacudida)
   static uint32_t lastPlayMs = 0;
   if (imu.jerk > 0.55f && now - lastPlayMs > 1500) { lastPlayMs = now; petAction(PetAction::Play); }

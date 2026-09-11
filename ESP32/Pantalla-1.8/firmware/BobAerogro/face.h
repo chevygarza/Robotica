@@ -18,6 +18,12 @@ void faceSetVitality(float v);          // 0..1: color vivo -> apagado/gris
 void faceSetScale(float s);             // tamano del cuerpo (edad)
 void faceAction(FaceAction a);          // dispara un gesto de ~1 s
 void faceForce(Emotion e, uint32_t ms); // fuerza un animo (ej. dormido boca abajo)
+
+// Actos que se pueden pedir desde fuera (puente con la Mac)
+enum class FaceMove : uint8_t { Hop, Dance, Wink, Curious, Peekaboo };
+void faceDo(FaceMove m);
+void faceSay(const char* text, uint32_t ms);   // globo de texto sobre Bob
+void faceFocus(uint32_t ms);                    // "concentrado": azul, sin travesuras
 void faceUpdate(const ImuSample& imu, float micEnergy, uint32_t nowMs);
 void faceDraw();
 Emotion faceEmotion();

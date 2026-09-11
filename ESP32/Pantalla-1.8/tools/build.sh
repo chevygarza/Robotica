@@ -23,6 +23,8 @@ arduino-cli --config-file $CFG compile --fqbn "$FQBN" --build-path "build/$SKETC
 
 if [ "$ACTION" = "flash" ] || [ "$ACTION" = "monitor" ]; then
   [ -n "$PORT" ] || { echo "no hay puerto usbmodem"; exit 1; }
+  # bobd (puente con la Mac) tiene el puerto abierto: pedirle que lo suelte
+  [ -S /tmp/bob-aerogro.sock ] && printf '__pause__\n' | nc -U -w 2 /tmp/bob-aerogro.sock >/dev/null 2>&1 && sleep 1
   echo "Flasheando $SKETCH a $PORT ..."
   arduino-cli --config-file $CFG upload --fqbn "$FQBN" -p "$PORT" --input-dir "build/$SKETCH" "firmware/$SKETCH"
 fi

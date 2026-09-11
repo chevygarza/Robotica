@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- launchd: arranca bobd al iniciar sesion y lo mantiene vivo.
+     Instalar:  cp tools/bridge/com.jose.bob-aerogro.plist ~/Library/LaunchAgents/
+                launchctl load ~/Library/LaunchAgents/com.jose.bob-aerogro.plist
+     Ajusta la ruta del repo y del venv si cambian. -->
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.jose.bob-aerogro</string>
+  <key>ProgramArguments</key><array>
+    <string>__REPO__/tools/.venv/bin/python</string>
+    <string>__REPO__/tools/bridge/bobd.py</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>__HOME__/Library/Logs/bobd.out.log</string>
+  <key>StandardErrorPath</key><string>__HOME__/Library/Logs/bobd.err.log</string>
+</dict></plist>
