@@ -17,6 +17,7 @@
 #include "rtc.h"
 #include "pet.h"
 #include "bridge.h"
+#include "net.h"
 
 Adafruit_XCA9554 expander;
 
@@ -76,6 +77,7 @@ void setup() {
   nowUnix = rtcNow();
   petBegin();
   faceBegin(gfx);
+  netBegin();
   Serial.println("[bob] ready");
 }
 
@@ -114,6 +116,14 @@ void loop() {
     default: break;
   }
 
+  // Novedades por Wi-Fi (hitos del mundo Claude)
+  NetNews news = netPoll();
+  if (news.fresh) {
+    if (news.celebrate) { faceDo(FaceMove::Dance); petAction(PetAction::Tickle); }
+    else faceDo(FaceMove::Curious);
+    faceSay(news.text, 6000);
+  }
+
   // Sacudida = jugar (una vez por sacudida)
   static uint32_t lastPlayMs = 0;
   if (imu.jerk > 0.55f && now - lastPlayMs > 1500) { lastPlayMs = now; petAction(PetAction::Play); }
@@ -134,8 +144,8 @@ void loop() {
 
   Emotion e = faceEmotion();
   if (e != lastPrinted || now - lastPrintMs > 3000) {
-    Serial.printf("[bob] emo=%s jerk=%.2f mic=%.2f vit=%.2f dia=%lu\n", emotionName(e), imu.jerk, energy,
-                  petVitality(), (unsigned long)petAgeDays());
+    Serial.printf("[bob] emo=%s jerk=%.2f mic=%.2f vit=%.2f dia=%lu energia=%.0f%s\n", emotionName(e), imu.jerk, energy,
+                  petVitality(), (unsigned long)petAgeDays(), petState().need[(int)Need::Sleep], asleep ? " zzz" : "");
     lastPrinted = e;
     lastPrintMs = now;
   }

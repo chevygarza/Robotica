@@ -9,7 +9,7 @@ static uint32_t g_nowUnix = 0;
 
 // Puntos por hora que pierde cada necesidad despierto
 static const float DECAY_PER_H[(int)Need::COUNT] = { 8.f, 5.f, 10.f, 6.f };
-static const float SLEEP_GAIN_PER_H = 30.f;      // dormido recupera sueño
+static const float SLEEP_GAIN_PER_H = 100.f;     // dormido: una hora = bateria llena
 static const char* NAMES[(int)Need::COUNT] = { "Hambre", "Sueno", "Diversion", "Carino" };
 static const uint32_t MAX_CATCHUP_S = 48 * 3600; // apagado mas de 2 dias no castiga mas
 
@@ -19,7 +19,7 @@ static void applyDecay(float seconds, bool asleep) {
   float h = seconds / 3600.f;
   for (int i = 0; i < (int)Need::COUNT; i++) {
     if (i == (int)Need::Sleep && asleep) g_st.need[i] = clamp100(g_st.need[i] + SLEEP_GAIN_PER_H * h);
-    else g_st.need[i] = clamp100(g_st.need[i] - DECAY_PER_H[i] * h);
+    else g_st.need[i] = clamp100(g_st.need[i] - DECAY_PER_H[i] * h * (asleep ? 0.5f : 1.f));   // dormido gasta menos
   }
 }
 

@@ -8,6 +8,14 @@ static bool g_ok = false;
 static uint8_t bcd2bin(uint8_t v) { return (v >> 4) * 10 + (v & 0x0F); }
 static uint8_t bin2bcd(uint8_t v) { return ((v / 10) << 4) | (v % 10); }
 
+// timegm propio: newlib no lo trae y mktime depende de TZ (que NTP cambia).
+static uint32_t timegm_u(const struct tm& t) {
+  int y = t.tm_year + 1900, m = t.tm_mon + 1, d = t.tm_mday;
+  if (m <= 2) { y--; m += 12; }
+  uint32_t days = 365UL * y + y / 4 - y / 100 + y / 400 + (153 * (m - 3) + 2) / 5 + d - 719469;
+  return days * 86400UL + t.tm_hour * 3600UL + t.tm_min * 60UL + t.tm_sec;
+}
+
 static bool rd(uint8_t reg, uint8_t* buf, size_t n) {
   Wire.beginTransmission(ADDR); Wire.write(reg);
   if (Wire.endTransmission(false) != 0) return false;
@@ -23,8 +31,7 @@ uint32_t rtcNow() {
   struct tm t = {};
   t.tm_sec = bcd2bin(b[0] & 0x7F); t.tm_min = bcd2bin(b[1] & 0x7F); t.tm_hour = bcd2bin(b[2] & 0x3F);
   t.tm_mday = bcd2bin(b[3] & 0x3F); t.tm_mon = bcd2bin(b[5] & 0x1F) - 1; t.tm_year = bcd2bin(b[6]) + 100;
-  time_t u = mktime(&t);     // TZ no puesta => UTC; solo importan las diferencias
-  return u < 0 ? 0 : (uint32_t)u;
+  return timegm_u(t);        // siempre UTC, sin importar TZ
 }
 
 bool rtcSet(uint32_t unix) {
@@ -44,7 +51,7 @@ static uint32_t compileTime() {
   sscanf(__DATE__, "%3s %d %d", mon, &d, &y); sscanf(__TIME__, "%d:%d:%d", &hh, &mm, &ss);
   t.tm_mon = (strstr(months, mon) - months) / 3; t.tm_mday = d; t.tm_year = y - 1900;
   t.tm_hour = hh; t.tm_min = mm; t.tm_sec = ss;
-  return (uint32_t)mktime(&t);
+  return timegm_u(t);
 }
 
 bool rtcBegin() {

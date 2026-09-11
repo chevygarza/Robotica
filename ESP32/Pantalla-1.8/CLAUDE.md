@@ -58,7 +58,8 @@ tools/.venv/bin/python tools/monitor.py /dev/cu.usbmodemXXX [seg]   # serial SIN
   Maqueta de referencia (misma geometria): https://claude.ai/code/artifact/7ad4c6df-9f44-403a-b180-5e0909e5d1cc
   Dibuja en `Arduino_Canvas` (PSRAM) y hace `flush()` por cuadro. Mic ES8311
   en tarea del core 0. **Validado en vivo 2026-09-10** (cara, IMU y voz).
-  - Tamagotchi (`pet.cpp`): hambre/sueno/diversion/carino bajan con hora real
+  - Tamagotchi (`pet.cpp`): hambre/energia/diversion/amor bajan con hora real
+    (dormido: energia +100/h y el resto baja a la mitad)
     (RTC `rtc.cpp`), memoria en NVS (`Preferences`, namespace `bob`). Cuidados
     por tactil (`touch.cpp`, CST816 0x15): tap mimo, doble tap comer, deslizar
     cosquillas, mantener = HUD videojuego (barras segmentadas); sacudir = jugar;
@@ -68,6 +69,13 @@ tools/.venv/bin/python tools/monitor.py /dev/cu.usbmodemXXX [seg]   # serial SIN
     pasear, rodar, guinar, curiosear, reirse, sonar, siesta, esconderse, temblar,
     bailar) elegidos por peso cuando nadie lo estimula; la vitalidad los modula.
 - `firmware/HelloWorld`: 01_HelloWorld oficial + secuencia del expansor. Prueba base.
+
+## Wi-Fi (`net.cpp`, tarea en core 0)
+- `secrets.h` local (plantilla `secrets.h.example`): WIFI_SSID/PASSWORD, NTP, TZ.
+- Al conectar: NTP -> RTC (UTC; `rtc.cpp` usa timegm propio, NO depende de TZ).
+- Hitos: versión de `@anthropic-ai/claude-code` en npm cada 30 min (Preferences
+  `bobnet/cc_ver`). Cambio de versión => baila + globo "Claude Code X.Y.Z!".
+  Sin cabecera Accept abreviada en `/latest` (da 406).
 
 ## Puente con la Mac (`tools/bridge/`)
 - `bobd.py`: demonio que mantiene el USB abierto (abrir el puerto en macOS
@@ -92,4 +100,4 @@ tools/.venv/bin/python tools/monitor.py /dev/cu.usbmodemXXX [seg]   # serial SIN
 ## Pendiente
 - [x] Mic ES8311 por I2S en tarea core 0 (`mic.cpp`, driver oficial `es8311.c`). Validado en vivo.
 - [ ] Leer giroscopio del QMI8658 (hoy solo acelerometro)
-- [ ] Hitos "del mundo Claude" por Wi-Fi (versiones nuevas, anuncios) -> `bob say`
+- [ ] Mas fuentes de hitos (CHANGELOG de Claude Code, anuncios Anthropic)
