@@ -2,10 +2,12 @@
 # Cliente del puente: manda un evento a Bob via bobd.
 #   bob hello | working | done | notify | error | bye
 #   bob say "Texto corto"
+#   bob rot 0|1|2|3|auto
 SOCK=/tmp/bob-aerogro.sock
 [ -S "$SOCK" ] || exit 0          # sin demonio: silencio (los hooks no deben fallar)
 case "$1" in
   say) shift; MSG="SAY $*" ;;
+  rot) MSG="ROT $2" ;;
   ping) MSG="PING" ;;
   *) MSG="EV $1" ;;
 esac

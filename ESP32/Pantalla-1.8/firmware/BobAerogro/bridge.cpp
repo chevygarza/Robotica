@@ -16,6 +16,9 @@ static BridgeMsg parse(const char* line) {
   } else if (!strncmp(line, "SAY ", 4)) {
     m.ev = BridgeEvent::Say;
     strncpy(m.text, line + 4, sizeof(m.text) - 1);
+  } else if (!strncmp(line, "ROT ", 4)) {
+    m.ev = BridgeEvent::Rot;
+    strncpy(m.text, line + 4, sizeof(m.text) - 1);
   } else if (!strcmp(line, "PING")) {
     Serial.println("PONG");
   }

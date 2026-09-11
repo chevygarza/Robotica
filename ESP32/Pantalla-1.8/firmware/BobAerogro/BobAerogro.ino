@@ -27,12 +27,34 @@ Arduino_DataBus *bus = new Arduino_ESP32QSPI(PIN_LCD_CS, PIN_LCD_SCLK,
 Arduino_CO5300 *panel = new Arduino_CO5300(bus, GFX_NOT_DEFINED /* RST via expansor */,
                                            0 /* rotation */, LCD_WIDTH, LCD_HEIGHT,
                                            LCD_COL_OFFSET, 0, 0, 0);
-// Rotacion 2 (180 grados) en el canvas: el "arriba" de Jose es el contrario al del panel.
-Arduino_Canvas *gfx = new Arduino_Canvas(LCD_WIDTH, LCD_HEIGHT, panel, 0, 0, 2);
+// Rotacion inicial 0 = vertical tipo iPhone (USB a la derecha); despues manda el acelerometro.
+Arduino_Canvas *gfx = new Arduino_Canvas(LCD_WIDTH, LCD_HEIGHT, panel, 0, 0, 0);
 
 static Emotion lastPrinted = Emotion::Idle;
 static uint32_t lastPrintMs = 0, lastLoopMs = 0, lastRtcMs = 0, nowUnix = 0;
 static bool hudOn = false;
+
+// Orientacion automatica: la gravedad en el plano de la pantalla dice donde es "abajo".
+// QUAD_ROT[q] = rotacion del canvas para el cuadrante q de atan2(ay, ax) (0=+X, 1=+Y, 2=-X, 3=-Y).
+// Calibrado en vivo con Jose (2026-09-11): vertical/iPhone (USB derecha) -> ax=+1 (q=0) -> rot 0;
+// de lado/pelicula -> ay=-1 (q=3) -> rot 3. Patron: rotacion = cuadrante.
+static const uint8_t QUAD_ROT[4] = { 0, 1, 2, 3 };
+static uint8_t g_rot = 0;
+static bool g_rotAuto = true;
+static void updateOrientation(const ImuSample& imu, uint32_t now) {
+  static int cand = -1; static uint32_t candSince = 0;
+  if (!imu.ok || !g_rotAuto) return;
+  float mag = sqrtf(imu.ax * imu.ax + imu.ay * imu.ay);
+  if (mag < 0.75f) { cand = -1; return; }                // acostado o poco inclinado: se queda como esta
+  float ang = atan2f(imu.ay, imu.ax) * 57.2958f;          // -180..180
+  int q = (int)floorf((ang + 45.f) / 90.f) & 3;           // cuadrante mas cercano
+  float center = q * 90.f; float d = fabsf(fmodf(ang - center + 540.f, 360.f) - 180.f);
+  if (d > 30.f) { cand = -1; return; }                    // zona muerta entre cuadrantes
+  if (q != cand) { cand = q; candSince = now; return; }
+  if (now - candSince < 800) return;                      // estable 800 ms
+  uint8_t rot = QUAD_ROT[q];
+  if (rot != g_rot) { g_rot = rot; gfx->setRotation(rot); Serial.printf("[bob] orientacion q=%d rot=%d\n", q, rot); }
+}
 
 // Igual que el demo oficial 02_Drawing_board y que el firmware de fabrica
 // ("Power and reset AMOLED panel through TCAL9534"): P0..P2 bajo, pausa, alto.
@@ -113,6 +135,10 @@ void loop() {
     case BridgeEvent::Error:   faceForce(Emotion::Angry, 1500); break;
     case BridgeEvent::Bye:     faceDo(FaceMove::Wink); faceSay("Bye!", 2000); break;
     case BridgeEvent::Say:     faceDo(FaceMove::Curious); faceSay(bm.text, 5000); break;
+    case BridgeEvent::Rot:
+      if (!strcmp(bm.text, "auto")) { g_rotAuto = true; faceSay("rotacion auto", 2000); }
+      else { g_rotAuto = false; g_rot = atoi(bm.text) & 3; gfx->setRotation(g_rot); char t[24]; snprintf(t, sizeof(t), "rot %d", g_rot); faceSay(t, 2500); }
+      break;
     default: break;
   }
 
@@ -126,17 +152,19 @@ void loop() {
 
   // Sacudida = jugar (una vez por sacudida)
   static uint32_t lastPlayMs = 0;
-  if (imu.jerk > 0.55f && now - lastPlayMs > 1500) { lastPlayMs = now; petAction(PetAction::Play); }
+  if (imu.jerk > 0.55f && now - lastPlayMs > 1500) { lastPlayMs = now; petAction(PetAction::Play); faceAction(FaceAction::Play); }
   // Boca abajo = a dormir. La orientacion de reposo al arrancar cuenta como "pantalla arriba".
   static float azUp = 0;
   if (azUp == 0 && imu.ok && fabsf(imu.az) > 0.5f) azUp = imu.az > 0 ? 1.f : -1.f;
   bool faceDown = imu.ok && azUp != 0 && imu.az * azUp < -0.5f;
   if (faceDown) faceForce(Emotion::Sleepy, 300);
 
+  updateOrientation(imu, now);
   faceUpdate(imu, energy, now);
   bool asleep = faceEmotion() == Emotion::Sleepy;
   petUpdate(dt, asleep, nowUnix);
   faceSetVitality(petVitality());
+  { Need w = petWorstNeed(); faceSetNeedHint((petState().need[(int)w] < 20 && w != Need::Sleep) ? (int8_t)w : -1); }
   faceSetScale(petSizeScale());
 
   if (hudOn) petDrawHud(gfx); else faceDraw();
@@ -144,8 +172,9 @@ void loop() {
 
   Emotion e = faceEmotion();
   if (e != lastPrinted || now - lastPrintMs > 3000) {
-    Serial.printf("[bob] emo=%s jerk=%.2f mic=%.2f vit=%.2f dia=%lu energia=%.0f%s\n", emotionName(e), imu.jerk, energy,
-                  petVitality(), (unsigned long)petAgeDays(), petState().need[(int)Need::Sleep], asleep ? " zzz" : "");
+    Serial.printf("[bob] emo=%s jerk=%.2f mic=%.2f vit=%.2f dia=%lu energia=%.0f%s ax=%.2f ay=%.2f az=%.2f rot=%d\n", emotionName(e), imu.jerk, energy,
+                  petVitality(), (unsigned long)petAgeDays(), petState().need[(int)Need::Sleep], asleep ? " zzz" : "",
+                  imu.ax, imu.ay, imu.az, g_rot);
     lastPrinted = e;
     lastPrintMs = now;
   }

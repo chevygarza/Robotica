@@ -100,14 +100,16 @@ void petDrawHud(Arduino_GFX* g) {
   // Pantalla completa estilo videojuego: titulo + 4 barras de vida segmentadas.
   static const char* LABELS[(int)Need::COUNT] = { "HAMBRE", "ENERGIA", "DIVERSION", "AMOR" };
   const int n = (int)Need::COUNT;
-  const int segs = 10, segW = 28, segH = 30, segGap = 4;
+  const int W = g->width(), H = g->height();
+  const int rowH = (H - 100) / n;                            // 87 vertical, 67 horizontal
+  const int segs = 10, segW = 28, segH = rowH - 34 < 30 ? rowH - 34 : 30, segGap = 4;
   const int barW = segs * segW + (segs - 1) * segGap;      // 316
-  const int x0 = (LCD_WIDTH - barW) / 2;
+  const int x0 = (W - barW) / 2;
   const uint16_t frame = rgb565(0x3A4150u), empty = rgb565(0x141820u), ink = rgb565(0xE8ECF2u);
 
   g->fillScreen(rgb565(COL_BG));
-  g->drawRoundRect(6, 6, LCD_WIDTH - 12, LCD_HEIGHT - 12, 18, frame);
-  g->drawRoundRect(8, 8, LCD_WIDTH - 16, LCD_HEIGHT - 16, 16, frame);
+  g->drawRoundRect(6, 6, W - 12, H - 12, 18, frame);
+  g->drawRoundRect(8, 8, W - 16, H - 16, 16, frame);
 
   g->setTextSize(4);
   g->setTextColor(rgb565(0x2ECC71u));
@@ -136,6 +138,6 @@ void petDrawHud(Arduino_GFX* g) {
       if (s < lit) g->fillRoundRect(sx, by, segW, segH, 5, c);
       else { g->fillRoundRect(sx, by, segW, segH, 5, empty); g->drawRoundRect(sx, by, segW, segH, 5, frame); }
     }
-    y += 84;
+    y += rowH;
   }
 }

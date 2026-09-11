@@ -40,7 +40,7 @@ bool imuBegin() {
     if (who == 0x05 || who == 0x7C || who != 0x00) {
       // Accel ±4g, ODR ~250Hz (CTRL2: aODR/aFS tipicos)
       writeReg(REG_CTRL1, 0x40);       // address auto increment / little endian-ish
-      writeReg(REG_CTRL2, 0x05);       // aFS=4g, aODR ~250Hz (depends on part)
+      writeReg(REG_CTRL2, 0x05);       // aFS=±2g, aODR ~250Hz
       writeReg(REG_CTRL7, 0x01);       // enable accelerometer
       delay(20);
       g_ok = true;
@@ -68,8 +68,8 @@ ImuSample imuRead() {
   auto s16 = [](uint8_t lo, uint8_t hi) -> int16_t {
     return (int16_t)((uint16_t)hi << 8 | lo);
   };
-  // ±4g => 4/32768 g/LSB approx
-  const float scale = 4.0f / 32768.0f;
+  // CTRL2=0x05 => aFS=±2g (bits 6:4 = 0): 2/32768 g/LSB. Con 4/32768 leia 2 g en reposo.
+  const float scale = 2.0f / 32768.0f;
   s.ax = s16(raw[0], raw[1]) * scale;
   s.ay = s16(raw[2], raw[3]) * scale;
   s.az = s16(raw[4], raw[5]) * scale;

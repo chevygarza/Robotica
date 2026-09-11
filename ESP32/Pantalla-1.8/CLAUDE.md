@@ -63,8 +63,16 @@ tools/.venv/bin/python tools/monitor.py /dev/cu.usbmodemXXX [seg]   # serial SIN
     (RTC `rtc.cpp`), memoria en NVS (`Preferences`, namespace `bob`). Cuidados
     por tactil (`touch.cpp`, CST816 0x15): tap mimo, doble tap comer, deslizar
     cosquillas, mantener = HUD videojuego (barras segmentadas); sacudir = jugar;
-    boca abajo = dormir. Canvas con rotacion 2: el "arriba" de Jose es el
-    contrario al del panel (USB abajo).
+    boca abajo = dormir.
+  - Orientacion automatica (acelerometro): rotacion del canvas = cuadrante de
+    atan2(ay,ax), calibrado en vivo (vertical/iPhone USB derecha = rot 0, de
+    lado = rot 3). Solo con >0.75 g en el plano y 800 ms estable. `bob rot N|auto`.
+  - IMU: CTRL2=0x05 es ±2g => escala 2/32768 (con 4/32768 leia el doble y
+    todo se asustaba).
+  - Particulas (`face.cpp`): migajas al comer, Zz dormido, corazones al mimo,
+    "ja" cosquillas, "!" sorpresa, "?" curiosear, confeti al bailar, pistas
+    "nom?/meh/<3?" cada 12 s si una necesidad esta critica. Sin alfa: se
+    desvanecen oscureciendo hacia el negro.
   - Vida propia (`face.cpp`, "director"): 12 actos autonomos (estirarse, brincar,
     pasear, rodar, guinar, curiosear, reirse, sonar, siesta, esconderse, temblar,
     bailar) elegidos por peso cuando nadie lo estimula; la vitalidad los modula.

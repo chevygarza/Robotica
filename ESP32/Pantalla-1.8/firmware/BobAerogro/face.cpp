@@ -53,6 +53,76 @@ const char* emotionName(Emotion e) {
 enum class Beh : uint8_t { None = 0, Stretch, Hop, Wander, Roll, Wink, Curious, Giggle, Daydream, Nap, Peekaboo, Shiver, Dance, COUNT };
 static const char* BEH_NAMES[] = { "-", "estirarse", "brincar", "pasear", "rodar", "guinar", "curiosear", "reirse", "sonar", "siesta", "esconderse", "temblar", "bailar" };
 
+static float frand() { return (esp_random() % 10000) / 10000.f; }
+
+// ---- particulas: la "prueba de vida" de cada interaccion ----
+enum class PK : uint8_t { Dot, Text, Heart, Spark, Ring };
+struct Particle { float x, y, vx, vy, life, maxLife, size, grav; uint32_t color; PK kind; char txt[5]; };
+static const int MAXP = 48;
+static Particle g_p[MAXP];
+static int g_np = 0;
+static int8_t g_needHint = -1;
+
+static void spawn(PK k, float x, float y, float vx, float vy, float life, float size, uint32_t color, float grav = 0, const char* txt = nullptr) {
+  int i = g_np < MAXP ? g_np++ : (int)(esp_random() % MAXP);   // lleno: recicla uno al azar
+  Particle& p = g_p[i];
+  p.x = x; p.y = y; p.vx = vx; p.vy = vy; p.life = life; p.maxLife = life; p.size = size; p.color = color; p.grav = grav; p.kind = k;
+  p.txt[0] = 0; if (txt) { strncpy(p.txt, txt, 4); p.txt[4] = 0; }
+}
+static uint32_t fadeColor(uint32_t c, float f) {            // f 1 -> color, 0 -> negro (fondo AMOLED)
+  uint32_t r = (uint32_t)(((c >> 16) & 0xFF) * f), g_ = (uint32_t)(((c >> 8) & 0xFF) * f), b = (uint32_t)((c & 0xFF) * f);
+  return (r << 16) | (g_ << 8) | b;
+}
+static void particlesUpdate(float dt) {
+  for (int i = 0; i < g_np;) {
+    Particle& p = g_p[i];
+    p.life -= dt;
+    if (p.life <= 0) { g_p[i] = g_p[--g_np]; continue; }
+    p.vy += p.grav * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+    i++;
+  }
+}
+static void particlesDraw(Arduino_GFX* g) {
+  for (int i = 0; i < g_np; i++) {
+    const Particle& p = g_p[i];
+    float f = p.life / p.maxLife;                            // 1 -> 0
+    float fade = f < .5f ? f * 2 : 1.f;                      // se apaga en la segunda mitad
+    uint16_t c = rgb565(fadeColor(p.color, fade));
+    int x = (int)p.x, y = (int)p.y;
+    switch (p.kind) {
+      case PK::Dot:   g->fillCircle(x, y, (int)fmaxf(1, p.size * (0.5f + 0.5f * f)), c); break;
+      case PK::Ring:  g->drawCircle(x, y, (int)(p.size * (1.5f - f)), c); break;
+      case PK::Spark: { int r = (int)fmaxf(2, p.size * f); g->drawFastHLine(x - r, y, 2 * r + 1, c); g->drawFastVLine(x, y - r, 2 * r + 1, c); } break;
+      case PK::Heart: { int r = (int)fmaxf(2, p.size); g->fillCircle(x - r / 2, y - r / 3, r / 2 + 1, c); g->fillCircle(x + r / 2, y - r / 3, r / 2 + 1, c); g->fillTriangle(x - r, y - r / 4, x + r, y - r / 4, x, y + r, c); } break;
+      case PK::Text:  g->setTextSize((int)fmaxf(1, p.size)); g->setTextColor(c); g->setCursor(x, y); g->print(p.txt); break;
+    }
+  }
+}
+// emisores
+static void fxCrumbs(float cx, float cy, uint32_t body) {
+  for (int i = 0; i < 3; i++) {
+    float a = (frand() - .5f) * 2.4f;   // hacia arriba, abriendo
+    float sp = 90 + frand() * 120;
+    spawn(PK::Dot, cx + (frand() - .5f) * 30, cy + 20, sinf(a) * sp, -cosf(a) * sp, .55f + frand() * .3f, 2 + frand() * 2,
+          (i == 0) ? COL_AMBER : fadeColor(body, .7f + frand() * .3f), 520);
+  }
+}
+static void fxZ(float x, float y, bool big) { spawn(PK::Text, x, y, 12 + frand() * 10, -22 - frand() * 8, 1.9f, big ? 2 : 1, 0x9AA3B0u, -6, big ? "Z" : "z"); }
+static void fxHearts(float cx, float cy) { for (int i = 0; i < 3; i++) spawn(PK::Heart, cx + (frand() - .5f) * 80, cy - 40 - frand() * 30, (frand() - .5f) * 30, -40 - frand() * 30, 1.2f + frand() * .5f, 4 + frand() * 3, 0xFF5C8Au, -10); }
+static void fxJa(float cx, float cy) { spawn(PK::Text, cx + (frand() - .5f) * 140, cy - 60 - frand() * 40, (frand() - .5f) * 40, -50 - frand() * 30, .9f, 2, 0xFFD166u, 0, frand() < .5f ? "ja" : "je"); }
+static void fxStars(float cx, float cy, float r) { for (int i = 0; i < 6; i++) { float a = frand() * TAU; spawn(PK::Spark, cx + cosf(a) * r, cy + sinf(a) * r * .8f, cosf(a) * 40, sinf(a) * 40 - 20, .8f + frand() * .4f, 5 + frand() * 4, 0xFFF3A0u); } }
+static void fxText(float cx, float cy, const char* t, uint32_t col, int size) { spawn(PK::Text, cx - 6 * size * strlen(t) / 2, cy, 0, -18, 1.4f, size, col, -8, t); }
+static void fxSparks(float cx, float cy, float r) { for (int i = 0; i < 2; i++) { float a = -frand() * 3.14f; spawn(PK::Spark, cx + cosf(a) * r, cy + sinf(a) * r, cosf(a) * 70, sinf(a) * 70, .35f, 4, 0xFF4040u); } }
+static void fxConfetti(float w) {
+  static const uint32_t cols[] = { 0x2ECC71u, 0x2196F3u, 0xFF6A00u, 0xFF5C8Au, 0xFFD166u, 0xFFFFFFu };
+  for (int i = 0; i < 2; i++) spawn(PK::Dot, frand() * w, -6, (frand() - .5f) * 60, 40 + frand() * 60, 2.2f, 3, cols[esp_random() % 6], 160);
+}
+static void fxDust(float cx, float cy) { for (int i = 0; i < 4; i++) { float d = (i < 2 ? -1 : 1); spawn(PK::Dot, cx + d * (20 + frand() * 20), cy, d * (40 + frand() * 50), -15 - frand() * 20, .5f, 2 + frand() * 2, 0x6B7280u, 60); } }
+static void fxThought(float cx, float cy) { spawn(PK::Ring, cx + 30 + frand() * 20, cy - 70 - frand() * 30, 8, -25, 1.6f, 4 + frand() * 5, 0x7C8AA0u, -4); }
+static void fxVoiceDots(float cx, float cy, float mic) { int n = 1 + (int)(mic * 3); for (int i = 0; i < n; i++) spawn(PK::Dot, cx + (frand() - .5f) * 40, cy - 60, (frand() - .5f) * 80, -90 - frand() * 60, .5f + frand() * .3f, 2 + frand() * 2, 0xFFB070u, 260); }
+
+void faceSetNeedHint(int8_t need) { g_needHint = need; }
+
 // ---- estado animado ----
 static Arduino_GFX* g = nullptr;
 static Emotion g_emo = Emotion::Idle;
@@ -74,11 +144,18 @@ static bool g_napping = false;
 
 static float lerpf(float a, float b, float k) { return a + (b - a) * k; }
 static float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
-static float frand() { return (esp_random() % 10000) / 10000.f; }
 
 void faceSetVitality(float v) { g_vitality = clampf(v, 0.f, 1.f); }
 void faceSetScale(float s) { g_scale = s; }
-void faceAction(FaceAction a) { g_action = a; g_actionUntil = millis() + (a == FaceAction::Eat ? 1200 : 700); g_beh = Beh::None; g_lastStimulusMs = millis(); }
+static float g_cxNow = 184, g_cyNow = 232, g_bodyR = 118;   // ultimo centro dibujado (para emitir particulas)
+void faceAction(FaceAction a) {
+  g_action = a; g_actionUntil = millis() + (a == FaceAction::Eat ? 1200 : (a == FaceAction::Play ? 300 : 700));
+  g_beh = Beh::None; g_lastStimulusMs = millis();
+  switch (a) {
+    case FaceAction::Caress: fxHearts(g_cxNow, g_cyNow); break;
+    default: break;
+  }
+}
 void faceForce(Emotion e, uint32_t ms) { g_forced = e; g_forceUntil = millis() + ms; }
 
 static char g_say[64] = "";
@@ -119,7 +196,7 @@ static Emotion pickEmotion(const ImuSample& imu, float mic, uint32_t now) {
   if (now < g_holdUntil) return g_emo;
   Emotion next = Emotion::Idle;
   if (mic > 0.55f)          { next = Emotion::Talking;   g_holdUntil = now + 400; }
-  else if (mic > 0.22f)     { next = Emotion::Listening; g_holdUntil = now + 250; }
+  else if (mic > 0.30f)     { next = Emotion::Listening; g_holdUntil = now + 250; }
   else if (imu.jerk > 1.4f) { next = Emotion::Angry;     g_holdUntil = now + 700; }
   else if (imu.jerk > 0.55f){ next = Emotion::Surprised; g_holdUntil = now + 500; }
   else if (now - g_lastMotionMs > 20000 && now - g_lastStimulusMs > 20000) next = Emotion::Sleepy;
@@ -166,7 +243,13 @@ void faceUpdate(const ImuSample& imu, float mic, uint32_t now) {
   last = now;
 
   Emotion e = pickEmotion(imu, mic, now);
-  if (e != g_emo) { g_emo = e; Serial.printf("[bob] %s\n", emotionName(e)); if (e != Emotion::Idle) g_beh = Beh::None; }
+  if (e != g_emo) {
+    g_emo = e; Serial.printf("[bob] %s\n", emotionName(e)); if (e != Emotion::Idle) g_beh = Beh::None;
+    switch (e) {
+      case Emotion::Surprised: fxText(g_cxNow, g_cyNow - g_bodyR - 40, "!", 0xFFF3A0u, 4); break;
+      default: break;
+    }
+  }
   g_phase += dt;
   const float k = clampf(dt * 8.f, 0.05f, 0.45f);
 
@@ -251,6 +334,24 @@ void faceUpdate(const ImuSample& imu, float mic, uint32_t now) {
     default: break;
   }
 
+  // ---- efectos periodicos ----
+  static uint32_t fxT = 0, hintT = 0;
+  const bool sleeping = (g_emo == Emotion::Sleepy) || g_napping;
+  uint32_t body = ((uint32_t)g_col[0] << 16) | ((uint32_t)g_col[1] << 8) | (uint32_t)g_col[2];
+  if (sleeping) { if (now - fxT > 1300) { fxT = now; fxZ(g_cxNow + g_bodyR * .55f, g_cyNow - g_bodyR * .7f, frand() < .4f); } }
+  else if (g_beh == Beh::Dance)  { if (now - fxT > 70)  { fxT = now; fxConfetti(g->width()); } }
+  else if (g_beh == Beh::Giggle) { if (now - fxT > 300) { fxT = now; fxJa(g_cxNow, g_cyNow); } }
+  else if (g_beh == Beh::Curious && bt < .05f && now - fxT > 1000) { fxT = now; fxText(g_cxNow + g_behA * 30, g_cyNow - g_bodyR - 44, "?", 0x7FC4FFu, 4); }
+  if (g_action == FaceAction::Eat && now < g_actionUntil && now - fxT > 120) { fxT = now; fxCrumbs(g_cxNow, g_cyNow + g_bodyR * .3f, body); }
+  if (g_action == FaceAction::Tickle && now < g_actionUntil && now - fxT > 200) { fxT = now; fxJa(g_cxNow, g_cyNow); }
+  if (g_needHint >= 0 && !sleeping && now - hintT > 12000) {
+    hintT = now;
+    if (g_needHint == 0) fxText(g_cxNow, g_cyNow - g_bodyR - 30, "nom?", 0xFFB020u, 2);
+    else if (g_needHint == 2) fxText(g_cxNow, g_cyNow - g_bodyR - 30, "meh", 0x9AA3B0u, 2);
+    else if (g_needHint == 3) fxText(g_cxNow, g_cyNow - g_bodyR - 30, "<3?", 0xFF5C8Au, 2);
+  }
+  particlesUpdate(dt);
+
   // gestos de cuidado (mandan sobre lo autonomo)
   if (g_action != FaceAction::None && now < g_actionUntil) {
     switch (g_action) {
@@ -278,7 +379,7 @@ static void fillPolygon(const float* px, const float* py, int n, uint16_t color)
   for (int i = 1; i < n; i++) { if (py[i] < minY) minY = py[i]; if (py[i] > maxY) maxY = py[i]; }
   int y0 = (int)ceilf(minY), y1 = (int)floorf(maxY);
   if (y0 < 0) y0 = 0;
-  if (y1 > LCD_HEIGHT - 1) y1 = LCD_HEIGHT - 1;
+  if (y1 > g->height() - 1) y1 = g->height() - 1;
   float xs[16];
   for (int y = y0; y <= y1; y++) {
     int cnt = 0;
@@ -294,7 +395,7 @@ static void fillPolygon(const float* px, const float* py, int n, uint16_t color)
     for (int a = 0; a + 1 < cnt; a += 2) {
       int xa = (int)ceilf(xs[a]), xb = (int)floorf(xs[a + 1]);
       if (xa < 0) xa = 0;
-      if (xb > LCD_WIDTH - 1) xb = LCD_WIDTH - 1;
+      if (xb > g->width() - 1) xb = g->width() - 1;
       if (xb >= xa) g->drawFastHLine(xa, y, xb - xa + 1, color);
     }
   }
@@ -323,7 +424,9 @@ static void capsule(float x0, float y0, float x1, float y1, float w, uint16_t c)
 void faceDraw() {
   if (!g) return;
   static float px[N], py[N];
-  const float cx = LCD_WIDTH / 2.f + g_posX, cy = LCD_HEIGHT / 2.f + 8 + g_bounce;
+  const int W = g->width(), H = g->height();
+  const float cx = W / 2.f + g_posX, cy = H / 2.f + 8 + g_bounce;
+  g_cxNow = cx; g_cyNow = cy; g_bodyR = R * g_scale * g_animScale;
 
   g->fillScreen(rgb565(COL_BG));
   if (g_ring > .02f) {
@@ -353,6 +456,8 @@ void faceDraw() {
     capsule(ex - dx, ey - dy, ex + dx, ey + dy, ew, white);
   }
 
+  particlesDraw(g);
+
   // globo de texto (hasta 2 lineas de 26 caracteres, fuente x2)
   if (g_say[0] && millis() < g_sayUntil) {
     const int cw = 12, maxc = 26, pad = 14;
@@ -368,9 +473,9 @@ void faceDraw() {
     }
     int lines = l2[0] ? 2 : 1;
     int w = (int)fmaxf(strlen(l1), strlen(l2)) * cw + pad * 2, h = lines * 20 + pad * 2 - 4;
-    int bx = (LCD_WIDTH - w) / 2, by = 22;
+    int bx = (W - w) / 2, by = 22;
     g->fillRoundRect(bx, by, w, h, 14, rgb565(0xFFFFFFu));
-    g->fillTriangle(LCD_WIDTH / 2 - 10, by + h - 1, LCD_WIDTH / 2 + 10, by + h - 1, LCD_WIDTH / 2, by + h + 12, rgb565(0xFFFFFFu));
+    g->fillTriangle(W / 2 - 10, by + h - 1, W / 2 + 10, by + h - 1, W / 2, by + h + 12, rgb565(0xFFFFFFu));
     g->setTextSize(2);
     g->setTextColor(rgb565(0x1B1F26u));
     g->setCursor(bx + pad, by + pad - 2); g->print(l1);
